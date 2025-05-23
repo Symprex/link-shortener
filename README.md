@@ -16,3 +16,9 @@ branch is updated.
 The project can be found at https://dash.cloudflare.com/93686db668e1fd06177661df08f7c0cd/workers/services/view/symprex-link-shortener/
 
 The link shortener service itself is hosted at https://go.symprex.com/
+
+## Management
+
+To manage navigate to https://go.symprex.com/dashboard and use the site token found in the shared `Symprex Ops`
+1Password Vault: `Link Shortener: go.symprex.com`
+
