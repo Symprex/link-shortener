@@ -37,7 +37,7 @@ const { title, github } = useAppConfig()
           @touchmove.prevent
         >
           <div
-            class="flex-col w-full h-auto overflow-hidden rounded-lg bg-background md:overflow-visible md:rounded-none md:relative md:flex md:flex-row"
+            class="flex-col w-full h-auto overflow-hidden rounded-lg bg-(background) md:overflow-visible md:rounded-none md:relative md:flex md:flex-row"
           >
             <a
               href="/"

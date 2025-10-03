@@ -64,7 +64,7 @@ function copyLink() {
         <div class="flex-1 overflow-hidden">
           <div class="flex items-center">
             <div class="font-bold leading-5 truncate text-md">
-              {{ host }}/{{ link.slug }}
+              {{ link.slug }}
             </div>
 
             <CopyCheck
@@ -135,7 +135,7 @@ function copyLink() {
               @update:link="updateLink"
             >
               <div
-                class="cursor-pointer flex select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                class="cursor-pointer flex select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-(accent)  hover:text-accent-foreground"
               >
                 <SquarePen
                   class="w-5 h-5 mr-2"
@@ -151,7 +151,7 @@ function copyLink() {
               @update:link="updateLink"
             >
               <div
-                class="cursor-pointer flex select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                class="cursor-pointer flex select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-(accent)  hover:text-accent-foreground"
               >
                 <Eraser
                   class="w-5 h-5 mr-2"

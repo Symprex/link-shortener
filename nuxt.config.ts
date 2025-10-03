@@ -132,4 +132,4 @@ export default defineNuxtConfig({
      */
     componentDir: './app/components/ui',
   },
-})
+});
