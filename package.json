@@ -81,5 +81,10 @@
     "*.{js,jsx,ts,tsx,vue}": [
       "eslint --fix"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "serialize-javascript": "7.0.4"
+    }
   }
 }
