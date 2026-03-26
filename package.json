@@ -34,17 +34,17 @@
     "d3-scale-chromatic": "^3.1.0",
     "embla-carousel-vue": "^8.6.0",
     "fuse.js": "^7.1.0",
-    "globe.gl": "^2.44.0",
+    "globe.gl": "^2.45.1",
     "intl-parse-accept-language": "^1.0.0",
     "lodash-es": "^4.17.21",
     "lucide-vue-next": "^0.511.0",
     "mysql-bricks": "^2.0.0",
-    "nanoid": "^5.1.6",
+    "nanoid": "^5.1.7",
     "pluralize": "^8.0.0",
     "qr-code-styling": "^1.9.2",
     "radix-vue": "^1.9.17",
-    "reka-ui": "^2.5.1",
-    "tailwindcss": "^4.1.14",
+    "reka-ui": "^2.9.2",
+    "tailwindcss": "^4.2.2",
     "ua-parser-js": "^2.0.5",
     "vaul-vue": "^0.4.1",
     "vee-validate": "^4.15.1",
@@ -64,7 +64,7 @@
     "@vueuse/integrations": "^13.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "eslint": "^9.36.0",
+    "eslint": "^9.39.4",
     "lint-staged": "^16.2.3",
     "nuxt": "^4.1.2",
     "shadcn-nuxt": "^2.2.0",
@@ -72,7 +72,20 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "vue-tsc": "^2.2.12",
-    "wrangler": "^4.40.2"
+    "wrangler": "^4.77.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@cloudflare/workers-types": "4.20260317.1",
+      "@unhead/vue": "2.1.12",
+      "devalue": "5.6.4",
+      "flatted": "3.4.2",
+      "h3": "1.15.10",
+      "picomatch@^2": "2.3.2",
+      "picomatch@^4": "4.0.4",
+      "serialize-javascript": "7.0.4",
+      "tar": "7.5.13"
+    }
   },
   "simple-git-hooks": {
     "pre-commit": "npm run lint-staged"
@@ -81,10 +94,5 @@
     "*.{js,jsx,ts,tsx,vue}": [
       "eslint --fix"
     ]
-  },
-  "pnpm": {
-    "overrides": {
-      "serialize-javascript": "7.0.4"
-    }
   }
 }
