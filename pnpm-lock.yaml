@@ -7,9 +7,9 @@ settings:
 overrides:
   '@cloudflare/workers-types': 4.20260317.1
   '@unhead/vue': 2.1.12
-  brace-expansion@1: ^1.1.13
-  brace-expansion@2: ^2.0.3
-  brace-expansion@5: ^5.0.5
+  brace-expansion@1: 1.1.13
+  brace-expansion@2: 2.0.3
+  brace-expansion@5: 5.0.5
   devalue: 5.6.4
   flatted: 3.4.2
   h3: 1.15.10
