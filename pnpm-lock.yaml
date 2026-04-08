@@ -13,6 +13,7 @@ overrides:
   devalue: 5.6.4
   flatted: 3.4.2
   h3: 1.15.10
+  lodash-es: ^4.18.1
   node-forge: 1.4.0
   picomatch@^2: 2.3.2
   picomatch@^4: 4.0.4
@@ -70,8 +71,8 @@ importers:
         specifier: ^1.0.0
         version: 1.0.0
       lodash-es:
-        specifier: ^4.17.21
-        version: 4.17.23
+        specifier: ^4.18.1
+        version: 4.18.1
       lucide-vue-next:
         specifier: ^0.511.0
         version: 0.511.0(vue@3.5.29(typescript@5.9.3))
@@ -4820,8 +4821,8 @@ packages:
     resolution: {integrity: sha512-XT9ewWAC43tiAV7xDAPflMkG0qOPn2QjHqlgX8FOqmWa/rxnyYDulF9T0F7tRy1u+TVTmK/M//6VIOye+2zDXg==}
     engines: {node: '>=20'}
 
-  lodash-es@4.17.23:
-    resolution: {integrity: sha512-kVI48u3PZr38HdYz98UmfPnXl2DXrpdctLrFLCd3kOx1xUkOmpFPx7gCWWM5MPkL/fD8zb+Ph0QzjGFs4+hHWg==}
+  lodash-es@4.18.1:
+    resolution: {integrity: sha512-J8xewKD/Gk22OZbhpOVSwcs60zhd95ESDwezOFuA3/099925PdHJ7OFHNTGtajL3AlZkykD32HykiMo+BIBI8A==}
 
   lodash.defaults@4.2.0:
     resolution: {integrity: sha512-qjxPLHd3r5DnsdGacqOMU6pb/avJzdh9tFX2ymgoZE27BmjXrNy/y4LoaiTeAb+O3gL8AfpJGtqfX/ae2leYYQ==}
@@ -9195,11 +9196,11 @@ snapshots:
   '@unovis/dagre-layout@0.8.8-2':
     dependencies:
       '@unovis/graphlibrary': 2.2.0-2
-      lodash-es: 4.17.23
+      lodash-es: 4.18.1
 
   '@unovis/graphlibrary@2.2.0-2':
     dependencies:
-      lodash-es: 4.17.23
+      lodash-es: 4.18.1
 
   '@unovis/ts@1.6.4':
     dependencies:
@@ -11402,7 +11403,7 @@ snapshots:
 
   kapsule@1.16.3:
     dependencies:
-      lodash-es: 4.17.23
+      lodash-es: 4.18.1
 
   kdbush@3.0.0: {}
 
@@ -11542,7 +11543,7 @@ snapshots:
     dependencies:
       p-locate: 6.0.0
 
-  lodash-es@4.17.23: {}
+  lodash-es@4.18.1: {}
 
   lodash.defaults@4.2.0: {}
 
