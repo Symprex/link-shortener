@@ -91,6 +91,7 @@
       "picomatch@^4": "4.0.4",
       "postcss@8": "^8.5.15",
       "serialize-javascript": "7.0.5",
+      "shell-quote": "1.8.4",
       "srvx": "0.11.13",
       "tar": "7.5.13",
       "vite": "7.3.2",
