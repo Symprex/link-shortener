@@ -45,7 +45,7 @@
     "radix-vue": "^1.9.17",
     "reka-ui": "^2.9.2",
     "tailwindcss": "^4.2.2",
-    "ua-parser-js": "^2.0.5",
+    "ua-parser-js": "^2.0.10",
     "vaul-vue": "^0.4.1",
     "vee-validate": "^4.15.1",
     "virtua": "^0.41.5",
