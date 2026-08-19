@@ -1,0 +1,39 @@
+{
+    "$schema": "https://raw.githubusercontent.com/Symprex/ai-engineering/main/schemas/symprex-config.schema.json",
+    "components": {
+        "sourceDir": "app/components/ui",
+        "tokens": [
+            "app/assets/css/tailwind.css"
+        ],
+        "importFrom": "@/components/ui",
+        "globals": true
+    },
+    "scopes": [
+        {
+            "name": "app",
+            "paths": [
+                "app/**",
+                "server/**",
+                "i18n/**",
+                "schemas/**",
+                "scripts/**",
+                "*.ts",
+                "*.mjs",
+                "*.json"
+            ],
+            "format": "pnpm exec eslint --fix \"{file}\"",
+            "lint": "pnpm lint",
+            "typecheck": "pnpm typecheck",
+            "build": "pnpm build",
+            "notes": "There is no test suite here at all and no CI workflow, so nothing runs on a pull request. A change is proven by `pnpm typecheck` plus a description of what a person should click; do not report a change as verified on the strength of a lint pass. ESLint is also the formatter — the antfu config carries the stylistic rules, and lint-staged runs `eslint --fix`, so there is no separate Prettier or oxfmt step. `pnpm typecheck` is `nuxt typecheck` and needs `.nuxt` to exist, which `postinstall` generates via `nuxt prepare`: on a fresh clone run `pnpm install` first or it fails on missing generated types rather than on your change. Components are shadcn-vue, generated into app/components/ui by the shadcn CLI against components.json — treat them as generated, add wrappers beside them rather than editing them in place. shadcn-nuxt is configured with an empty prefix, so they are auto-imported globally and need no import; the explicit `@/components/ui/...` form in existing code is for the non-component exports beside them. app/components/spark-ui is a second, hand-written set and is not generated. This repository is a fork of miantiao-me/Sink, so a change that could be made the way upstream would make it is cheaper to carry forward."
+        }
+    ],
+    "commit": {
+        "subjectFormat": "Conventional Commits — type: summary, for example fix: bump js-yaml to 4.3.1"
+    },
+    "gate": "pnpm lint && pnpm typecheck",
+    "app": {
+        "url": "https://go.symprex.com",
+        "startHint": "pnpm install then pnpm dev. Deployment is Cloudflare, and docs/deployment/ has both the Pages and the Workers route."
+    }
+}

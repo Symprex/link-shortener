@@ -1,0 +1,36 @@
+---
+globs:
+  - "**/*Page.vue"
+  - "**/loaders/*.ts"
+  - "**/routes/**/*.ts"
+  - "**/*Routes.ts"
+---
+
+# Routes and loaders
+
+**Read the repository's own routing rules first** — `frontend-advisor` lists where they live, and they win.
+
+- **Routes belong to domain modules, not a central file.** A route added centrally is a route nobody owns.
+- `*Page.vue` containers are the route entries; the matching presentational component lives beside them.
+- **Export loaders from the non-setup `<script lang="ts">` block.** Where `unplugin-vue-router` is in use it cannot register them otherwise, and the failure is a route that renders with no data rather than an error.
+- **Loaders own route data fetching** and dedupe by route key. Page models own behaviour derived from that data.
+- **Route-level data belongs in a loader or page model, never scattered `onMounted` calls.**
+- **Match expected API failures on the generated `errorTypes`, not a raw status code.** A status check passes review and breaks the first time the contract adds a case.
+- A cross-module import from a route usually means the route belongs in the other module.
+
+# The one that catches people
+
+**Navigating to the same route with different params can reuse the component instance.** Do not assume a fresh lifecycle — the mount hook will not run again, and data keyed off it will be stale.
+
+<!--
+Mechanisable, and therefore interim, per adr/0016:
+
+- loader exported from `<script setup>` rather than the plain block — detectable by a lint
+  rule over .vue files, and it is the highest-value one here because the failure is silent.
+- raw status-code comparison where errorTypes exists — no-restricted-syntax candidate.
+- cross-module import from a route file — an import-boundary rule (eslint-plugin-boundaries
+  or oxlint equivalent) expresses this exactly, and would retire the rule.
+-->
+
+---
+*Ported from the Signature365 `vue-router-best-practices` skill.*

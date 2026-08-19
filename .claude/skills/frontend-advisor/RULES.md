@@ -1,0 +1,48 @@
+---
+globs:
+  - "**/*.vue"
+  - "**/*.tsx"
+---
+
+# The repository wins
+
+Before editing or reviewing frontend code, read the repository's own frontend rules — `.claude/rules/*.md` with a matching `paths:` glob, `.github/instructions/frontend*|vue*|typescript*.instructions.md`, a frontend section in `AGENTS.md` or `CLAUDE.md`, or scope `notes` in `.symprex/config.json`.
+
+**Where generic guidance conflicts with the repository's own rules, the repository wins.** These describe how Symprex generally works with Vue; a repository's rules describe how the thing being shipped actually works.
+
+# Use the repository's components
+
+Symprex frontends wrap their UI framework rather than using it directly. **Read `components` in `.symprex/config.json` first** — it names the wrapper library, its docs, its real sources, its tokens and its import specifier. Where `sourceDir` is set, read the sources: documentation about a component set goes stale and the sources cannot.
+
+- **Use the wrappers in application code.** Raw framework components belong only inside the wrapper package itself, its boot files, and Storybook config — that package is the abstraction boundary.
+- **Take colours, spacing and typography from the design tokens.** Never a hard-coded value.
+- Follow the repository's page shell convention — a page container plus header and body components — rather than composing a page from scratch.
+- **Verify an icon name exists in the icon set's version before using it.** A name added later, or renamed, usually renders as an invisible blank rather than erroring — so it passes review, passes tests, and ships as a missing icon.
+- **Check which props a wrapper actually declares** where it forwards attributes. Undeclared framework props are commonly dropped silently, so the markup looks right and the behaviour is absent.
+- **Never open a dialog from inside a dialog.** Where a confirmation is needed mid-flow, swap the open dialog's body and actions for a confirm step and offer a way back.
+
+# Where code belongs
+
+- Keep loaders responsible for route data, page models responsible for behaviour, and views responsible for rendering.
+- **Pass slices below the page boundary, not the full model.**
+- Avoid cross-module component imports where module ownership is unclear — it is usually a sign the code belongs in the other module.
+- **Once a change spans several related files, put them in a feature folder** — the container, its presentational half, its composable, its utilities and their specs and stories together — with an `index.ts` barrel that is the folder's public API. Import the folder, not its internals.
+- Follow the repository's naming and folder conventions exactly.
+
+<!--
+Mechanisable, and therefore interim, per adr/0016. This is the richest lint seam in the
+packs, and the wrapper rule is the one worth doing first:
+
+- raw framework components in application code — no-restricted-imports scoped to app
+  directories with the wrapper package allowed. Fully deterministic, high value.
+- hard-coded colours, spacing, font sizes — a design-token lint rule over style blocks and
+  class attributes; established prior art in several ecosystems.
+- unknown icon name — checkable against the icon set's manifest at build time, which turns
+  the worst failure mode here (an invisible blank) into a build error.
+- dialog opened from inside a dialog — detectable where a dialog-opening helper is called
+  from a component already inside one; needs a repo-specific rule.
+- cross-module imports — an import-boundary rule expresses this exactly.
+-->
+
+---
+*Ported from the Signature365 `frontend-architecture` skill, with the design-system guidance absorbed from the Signature365 `design-system` skill.*

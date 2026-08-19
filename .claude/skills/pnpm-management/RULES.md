@@ -1,0 +1,26 @@
+---
+globs:
+  - "**/package.json"
+  - "**/pnpm-lock.yaml"
+  - "**/pnpm-workspace.yaml"
+---
+
+# pnpm
+
+- **Never hand-edit `pnpm-lock.yaml`.** Use pnpm commands: `pnpm add`, `pnpm remove`, `pnpm update`, `pnpm ls`, `pnpm why`, `pnpm outdated`, `pnpm audit`.
+- Change `package.json` and normal `pnpm-workspace.yaml` entries — catalogs included — through pnpm commands too. Hand-edit `pnpm-workspace.yaml` only to add or remove an entry in its `overrides:` block.
+- **Find the workspace roots before running anything.** A repository may have one `pnpm-workspace.yaml` at its root, several with none at the root, or one per area. Run pnpm from the relevant root with `pnpm -C <dir> …`, and edit catalogs and overrides in *that* workspace's file.
+- Scope package operations with `--filter` rather than applying them workspace-wide by default.
+
+<!--
+Mechanisable, and therefore interim, per adr/0016:
+
+- hand-edited lockfile — a CI check comparing the lockfile against `pnpm install
+  --frozen-lockfile` catches every case deterministically, and would retire the first rule.
+- edits to pnpm-workspace.yaml outside the overrides block — diffable in CI.
+- wrong workspace root — not lintable, but a repo script that resolves the root for the
+  caller removes the need to remember it.
+-->
+
+---
+*Ported from the Signature365 `pnpm-management` skill.*
