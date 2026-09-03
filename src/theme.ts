@@ -22,10 +22,13 @@
 // `--s-code-bg` / `--s-code-color` through Pico's own `<code>` styling.
 //
 // What is *not* here: the admin-only rules (`.bar-track`, `.bar-fill`, `.pct`,
-// `.country-badge`, table styling) stay in src/admin/page.ts's own EXTRA_CSS, since the 404
-// page has no bars, badges or tables and should not carry their CSS. `body`, `h1`/`h2` and
-// `section` are shared because both pages use them: the 404 page is plain-page content
-// (`body`, `h1`) and the admin page additionally uses `section` for its panels.
+// `.country-badge`, table styling and the `.panel` box itself) stay in src/admin/page.ts's
+// own EXTRA_CSS, since the 404 page has no bars, badges, tables or panels and should not
+// carry their CSS. `body`, `h1`/`h2` and `section` are shared because both pages use them:
+// the 404 page is plain-page content (`body`, `h1`) and the admin page additionally uses
+// `section` to space its heading-then-panel blocks apart — `section` itself carries no
+// background any more (Signature365's own pattern: the heading sits on the page
+// background, and only the panel below it is a distinct box; see `.panel` in EXTRA_CSS).
 export const THEME_CSS = `
 :root {
   --s-page-bg: #f9fafb;
@@ -102,10 +105,6 @@ h1, h2 {
   color: var(--s-heading-color);
 }
 section {
-  background: var(--s-page-accent-bg);
-  border: 1px solid var(--s-border-color);
-  border-radius: var(--s-space-xs);
-  padding: var(--s-space-md);
-  margin-bottom: var(--s-space-md);
+  margin-bottom: var(--s-space-lg);
 }
 `;

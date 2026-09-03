@@ -566,10 +566,36 @@ describe("renderAdminPage", () => {
     // old ones.
     const barTrackIndex = body.indexOf(".bar-track");
     expect(barTrackIndex).toBeGreaterThan(-1);
-    const ourCss = body.slice(barTrackIndex, body.indexOf("</style>"));
+    // Pico and our CSS are now two separate <style> tags (see the test below), so the
+    // close tag that ends *our* block is the first one after .bar-track, not the first
+    // one in the document.
+    const ourCss = body.slice(barTrackIndex, body.indexOf("</style>", barTrackIndex));
     expect(ourCss).not.toContain("var(--pico-");
     expect(ourCss).toMatch(/\.bar-track\s*\{[^}]*background:\s*var\(--s-border-color\)/);
     expect(ourCss).toMatch(/\.bar-fill\s*\{[^}]*background:\s*var\(--sig365-theme-link-color\)/);
+  });
+
+  it("keeps Pico's CSS and our own CSS in separate <style> elements, not concatenated into one", async () => {
+    sqlHandler = routeSql();
+    const response = await renderAdminPage(ENV, url(), NOW);
+    const body = await response.text();
+
+    // Regression test for the reported invisibility: Pico's minified CSS leaves the
+    // parser inside an open rule, so anything appended after it *inside the same
+    // <style> tag* is parsed as a CSS-nested child of Pico's last selector and never
+    // matches anything — the rule text is present in the page but inert, which is
+    // exactly what let the old "the CSS text is present" assertion pass while the bars
+    // were invisible. This asserts the structural fix instead: a second <style>
+    // element whose content opens with our own first rule, not with Pico's.
+    //
+    // What this test would catch: the two CSS blocks being merged back into one
+    // <style> tag. What it would NOT catch: a single stray rule of ours being
+    // concatenated onto the wrong block, or Pico's CSS itself being malformed — for
+    // that, a real browser's computed styles are still the ground truth.
+    const styleBlocks = [...body.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((match) => match[1]);
+    expect(styleBlocks.length).toBeGreaterThanOrEqual(2);
+    const ourBlock = styleBlocks.find((block) => block.trimStart().startsWith(":root"));
+    expect(ourBlock).toBeDefined();
   });
 
   it("renders no external request — no http(s) resource reference, no <link> and no <script> tag", async () => {
@@ -584,6 +610,58 @@ describe("renderAdminPage", () => {
     expect(body).not.toMatch(/\b(?:href|src)="https?:\/\//);
     expect(body).not.toContain("<link");
     expect(body).not.toContain("<script");
+  });
+
+  it("puts each section's heading on the page background and its table inside a distinct panel below it, not inside the same box", async () => {
+    sqlHandler = routeSql({
+      perLink: () => Response.json({ data: [{ slug: "foo", clicks: 1 }] }),
+      countries: () => Response.json({ data: [{ country: "GB", clicks: 1 }] }),
+      referrers: () => Response.json({ data: [{ referrer: "-", clicks: 1 }] }),
+      missingSlugs: () => Response.json({ data: [{ slug: "typo", misses: 1 }] }),
+    });
+
+    const response = await renderAdminPage(ENV, url());
+    const body = await response.text();
+
+    // Signature365's own pattern (task instructions): a heading sitting directly on the
+    // page background, then a separate panel box below it holding the table. Not a
+    // heading and table sharing one box, which is what the old single <section> rule
+    // did. Checked for every ranked table plus the per-link table.
+    for (const [heading, marker] of [
+      ["Per-link clicks", "foo"],
+      ["Top countries", "GB"],
+      ["Top referrers", "(none)"],
+      ["Top missing slugs", "typo"],
+    ]) {
+      const headingIndex = body.indexOf(`<h2>${heading}</h2>`);
+      expect(headingIndex, `expected an <h2>${heading}</h2>`).toBeGreaterThan(-1);
+      const panelIndex = body.indexOf('<div class="panel">', headingIndex);
+      expect(panelIndex, `expected a panel after the "${heading}" heading`).toBeGreaterThan(
+        headingIndex,
+      );
+      const tableIndex = body.indexOf("<table>", panelIndex);
+      expect(tableIndex, `expected a table inside the "${heading}" panel`).toBeGreaterThan(
+        panelIndex,
+      );
+      const markerIndex = body.indexOf(marker, tableIndex);
+      expect(markerIndex, `expected "${marker}" inside the "${heading}" table`).toBeGreaterThan(
+        tableIndex,
+      );
+    }
+  });
+
+  it("gives the panel its own background and border tokens, separate from the page background", async () => {
+    sqlHandler = routeSql();
+    const response = await renderAdminPage(ENV, url(), NOW);
+    const body = await response.text();
+
+    // .panel is the box in the screenshots — --s-page-accent-bg with a border and
+    // rounded corners — distinct from the plain page background the heading sits on.
+    const styleBlocks = [...body.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((match) => match[1]);
+    const ourBlock = styleBlocks.find((block) => block.trimStart().startsWith(":root")) ?? "";
+    expect(ourBlock).toMatch(/\.panel\s*\{[^}]*background:\s*var\(--s-page-accent-bg\)/);
+    expect(ourBlock).toMatch(/\.panel\s*\{[^}]*border:\s*1px solid var\(--s-border-color\)/);
+    expect(ourBlock).toMatch(/\.panel\s*\{[^}]*border-radius:\s*var\(--s-space-xs\)/);
   });
 
   it("degrades one table on its own when its query fails, leaving the rest of the page intact", async () => {

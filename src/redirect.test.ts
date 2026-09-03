@@ -76,12 +76,28 @@ describe("the redirect worker", () => {
     const body = await response.text();
 
     // No <link> (an external stylesheet) or <script> tag at all — Pico is inlined and
-    // there is no client JavaScript. The docs link at the foot of the page is a normal
-    // navigational <a href="https://…">, which this deliberately does not forbid — only
-    // a resource the browser loads automatically.
+    // there is no client JavaScript. The symprex.com link at the foot of the page is a
+    // normal navigational <a href="https://…">, which this deliberately does not
+    // forbid — only a resource the browser loads automatically.
     expect(body).not.toContain("<link");
     expect(body).not.toContain("<script");
     expect(body).not.toMatch(/\bsrc="https?:\/\//);
+  });
+
+  it("reveals no internal knowledge on the 404 page — no file path, no pull request, no repository link", async () => {
+    // The engineer's own words: the public 404 must show only a user-friendly page and
+    // must contain no details of how to add a redirect, since that is internal
+    // knowledge. Before this test, the page named links/<slug>.json and linked to
+    // docs/links.md on GitHub.
+    const response = await SELF.fetch("https://go.symprex.com/nope", { redirect: "manual" });
+    const body = await response.text();
+
+    expect(body).not.toContain("links/");
+    expect(body).not.toContain(".json");
+    expect(body).not.toContain("pull request");
+    expect(body).not.toContain("github.com");
+    expect(body).not.toContain("docs/links.md");
+    expect(body).toContain("https://www.symprex.com");
   });
 
   it("redirects the home page to the Symprex marketing site with a 302, not a 301", async () => {

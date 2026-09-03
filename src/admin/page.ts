@@ -50,11 +50,11 @@ type SectionResult<Row> = { rows: Row[] } | { error: string };
 const REGION_NAMES = new Intl.DisplayNames(["en-GB"], { type: "region" });
 
 /**
- * The admin-only CSS on top of the shared Signature365 theme (src/theme.ts): the tables,
- * badge and percentage bars this page needs, appended after `PICO_CSS` and `THEME_CSS` in
- * the same inlined `<style>` block rather than a second `<style>` tag or an external
- * stylesheet, so this page still issues no requests beyond the six Analytics Engine
- * queries.
+ * The admin-only CSS on top of the shared Signature365 theme (src/theme.ts): the panel,
+ * tables, badge and percentage bars this page needs, rendered alongside `THEME_CSS` in a
+ * second inlined `<style>` tag — see renderPage()'s own comment for why it cannot share
+ * Pico's tag — rather than an external stylesheet, so this page still issues no requests
+ * beyond the six Analytics Engine queries.
  *
  * The tokens, the Pico variable overrides and the rules both this page and the redirect
  * Worker's 404 page share (`body`, `h1`/`h2`, `section`) moved to src/theme.ts so a second
@@ -62,12 +62,27 @@ const REGION_NAMES = new Intl.DisplayNames(["en-GB"], { type: "region" });
  * Signature365 source and the dark-mode reasoning. What stays here is admin-only: nothing
  * below is used by the 404 page.
  *
+ * `.panel` is the Signature365 layout pattern (per the task): a section heading sitting
+ * directly on the page background, then a visually distinct box below it — `.panel`,
+ * not `section` itself — holding the table or chart. Every block below (renderReport,
+ * renderChartSection, renderSection) wraps its content in a `<div class="panel">` for
+ * exactly this reason.
+ *
  * The bars themselves were the fix for the reported invisibility: `--pico-primary` and
  * `--pico-muted-border-color` do not resolve to a visible colour in the classless build's
  * dark scope, so `.bar-track` and `.bar-fill` are given the `--s-*`/`--sig365-*` tokens
  * directly rather than routed back through Pico's variables.
  */
 const EXTRA_CSS = `
+h2 {
+  margin-bottom: var(--s-space-sm);
+}
+.panel {
+  background: var(--s-page-accent-bg);
+  border: 1px solid var(--s-border-color);
+  border-radius: var(--s-space-xs);
+  padding: var(--s-space-md);
+}
 table {
   border-color: var(--s-table-row-border);
 }
@@ -107,6 +122,17 @@ td, th {
   background: var(--sig365-theme-link-color);
 }
 `;
+
+/**
+ * Pico and our own CSS as two separate `<style>` tags, never one. Pico's minified CSS
+ * leaves the parser inside an open rule, so anything appended after it inside the *same*
+ * `<style>` tag is parsed as a CSS-nested child of Pico's last selector and never matches
+ * — this was the reported invisibility: the rules were present in the HTML but inert,
+ * nested under a selector that never applies. Verified live in a browser by splitting the
+ * tag: doing so alone made the tokens, the panel background and the bars resolve.
+ */
+const STYLE_TAGS = `<style>${PICO_CSS}</style>
+    <style>${THEME_CSS}${EXTRA_CSS}</style>`;
 
 /**
  * Renders `/admin`: fetches the totals and all four tables for the selected window.
@@ -214,7 +240,7 @@ function renderPage(
   <head>
     <meta charset="utf-8" />
     <title>Symprex Go</title>
-    <style>${PICO_CSS}${THEME_CSS}${EXTRA_CSS}</style>
+    ${STYLE_TAGS}
   </head>
   <body>
     <main>
@@ -256,25 +282,33 @@ function renderReport(totals: TotalsRow | null, perLink: PerLinkRow[]): string {
 
   return `
       <section>
-        <ul>
-          <li>Clicks: <strong>${clicks}</strong></li>
-          <li>Visitors: <strong>${visitors}</strong></li>
-          <li>Active links: <strong>${activeLinks}</strong></li>
-        </ul>
+        <h2>Overview</h2>
+        <div class="panel">
+          <ul>
+            <li>Clicks: <strong>${clicks}</strong></li>
+            <li>Visitors: <strong>${visitors}</strong></li>
+            <li>Active links: <strong>${activeLinks}</strong></li>
+          </ul>
+        </div>
       </section>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Slug</th>
-            <th scope="col">Clicks</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${withPercent(perLink, (row) => row.clicks)
-            .map(([row, pct]) => renderLinkRow(row, pct))
-            .join("\n          ")}
-        </tbody>
-      </table>`;
+      <section>
+        <h2>Per-link clicks</h2>
+        <div class="panel">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Slug</th>
+                <th scope="col">Clicks</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${withPercent(perLink, (row) => row.clicks)
+                .map(([row, pct]) => renderLinkRow(row, pct))
+                .join("\n              ")}
+            </tbody>
+          </table>
+        </div>
+      </section>`;
 }
 
 function renderLinkRow(row: PerLinkRow, pct: number): string {
@@ -304,7 +338,9 @@ function renderChartSection(
   return `
       <section>
         <h2>Clicks per day</h2>
-        ${renderClicksChart(points)}
+        <div class="panel">
+          ${renderClicksChart(points)}
+        </div>
       </section>`;
 }
 
@@ -334,19 +370,21 @@ function renderSection<Row>(
   return `
       <section>
         <h2>${escapeHtml(title)}</h2>
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">${escapeHtml(firstHeader)}</th>
-              <th scope="col">${escapeHtml(secondHeader)}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${withPercent(result.rows, countOf)
-              .map(([row, pct]) => renderRow(row, pct))
-              .join("\n            ")}
-          </tbody>
-        </table>
+        <div class="panel">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">${escapeHtml(firstHeader)}</th>
+                <th scope="col">${escapeHtml(secondHeader)}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${withPercent(result.rows, countOf)
+                .map(([row, pct]) => renderRow(row, pct))
+                .join("\n              ")}
+            </tbody>
+          </table>
+        </div>
       </section>`;
 }
 

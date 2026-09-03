@@ -42,18 +42,36 @@ export default {
 };
 
 /**
- * The slug's percent-encoding is decoded for a readable page (so `%3Cfoo%3E` shows as
- * `<foo>` rather than as an encoded string) and HTML-escaped afterwards, since decoding
- * is exactly what can turn an encoded `%3Cscript%3E` into a literal `<script>` — the
- * slug comes straight from the URL and is attacker-controlled.
+ * This is the one page an outsider might actually see, on the Worker that carries no
+ * authentication of its own (see this module's header comment) — so, per the engineer,
+ * it reveals no internal knowledge. It used to name the missing-link file path
+ * (`links/<slug>.json`), invite a pull request and link to `docs/links.md` on GitHub;
+ * all of that told a stranger exactly how this repository is organised, which is not
+ * theirs to know. What is left is a short, calm, user-friendly page pointing to
+ * symprex.com.
+ *
+ * The requested slug is still shown, deliberately: `/carers` doesn't exist is
+ * user-friendly (it tells the visitor what they typed, in case of a typo) and reveals
+ * nothing about how this Worker or its data are built — it is only what the visitor
+ * themselves put in the address bar, echoed back. It remains HTML-escaped for the same
+ * reason as before: the slug's percent-encoding is decoded for readability (so
+ * `%3Cfoo%3E` shows as `<foo>` rather than as an encoded string), and decoding is
+ * exactly what can turn an encoded `%3Cscript%3E` into a literal `<script>` — the slug
+ * comes straight from the URL and is attacker-controlled.
+ *
+ * The miss itself is still logged to Analytics Engine by the caller (recordAnalytics,
+ * above) regardless of what this page renders — the admin page's "Top missing slugs"
+ * table depends on that, and this function has no part in it either way.
  *
  * Styled with the same Signature365 theme (src/theme.ts) the admin page uses (D21 moved
- * admin behind Access on its own Worker, but this 404 is on the public one — the one page
- * an outsider might actually see, so it should not look like a different product). Pico
- * and the theme are two separate `<style>` tags rather than one combined block: no bespoke
- * CSS is needed here (a bare `<code>` already picks up `--s-code-bg`/`--s-code-color` and
- * a bare `<a>` already picks up `--sig365-theme-link-color`, both via the Pico variable
- * overrides in src/theme.ts), so there is nothing to append PICO_CSS with.
+ * admin behind Access on its own Worker, but this 404 is on the public one, so it should
+ * not look like a different product). Pico and the theme are two separate `<style>` tags
+ * rather than one combined block — Pico's minified CSS leaves the parser inside an open
+ * rule, so anything appended after it in the same tag is parsed as a CSS-nested child of
+ * Pico's last selector and never matches (see src/admin/page.ts's STYLE_TAGS for the full
+ * diagnosis); no bespoke CSS is needed here regardless (a bare `<code>` already picks up
+ * `--s-code-bg`/`--s-code-color` and a bare `<a>` already picks up
+ * `--sig365-theme-link-color`, both via the Pico variable overrides in src/theme.ts).
  */
 function notFound(pathname: string): Response {
   const slug = decodeSlug(stripSlashes(pathname));
@@ -68,14 +86,8 @@ function notFound(pathname: string): Response {
   <body>
     <main>
       <h1>Not found</h1>
-      <p><code>${escapeHtml(slug)}</code> is not a link on go.symprex.com.</p>
-      <p>
-        To request it, open a pull request adding
-        <code>links/${escapeHtml(slug)}.json</code> — see
-        <a
-          href="https://github.com/Symprex/link-shortener/blob/master/docs/links.md"
-        >docs/links.md</a> for the file format.
-      </p>
+      <p><code>${escapeHtml(slug)}</code> doesn't exist.</p>
+      <p>Visit <a href="https://www.symprex.com">symprex.com</a> instead.</p>
     </main>
   </body>
 </html>
