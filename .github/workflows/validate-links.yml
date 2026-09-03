@@ -41,13 +41,21 @@ jobs:
 
       - run: node scripts/validate-links.ts
 
+      # The base directory is created empty and only filled if links/ existed at the
+      # merge base. `git archive <ref> -- links` fails outright on a ref with no such
+      # path, and the very first pull request to add links/ has exactly that merge
+      # base — so without the guard this step kills the job on the one run where the
+      # answer is simply "nothing to compare against". An empty base is the correct
+      # input, not an error: findTargetChanges treats a file present on one side only
+      # as an addition, which is what every link in that PR is.
       - name: Check out links/ at the merge base
         id: base-links
         run: |
           merge_base=$(git merge-base HEAD "origin/${{ github.event.pull_request.base.ref }}")
-          rm -rf /tmp/base-links
-          mkdir -p /tmp/base-links
-          git archive "$merge_base" -- links | tar -x -C /tmp/base-links
+          mkdir -p /tmp/base-links/links
+          if git cat-file -e "$merge_base:links" 2>/dev/null; then
+            git archive "$merge_base" -- links | tar -x -C /tmp/base-links
+          fi
           echo "dir=/tmp/base-links/links" >> "$GITHUB_OUTPUT"
 
       - name: Detect target changes
