@@ -1,0 +1,58 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // The admin Worker (D21): the statistics page and nothing else, protected *wholly* by
+  // Cloudflare Worker-level Access. Separate from wrangler.worker.jsonc because
+  // Worker-level Access is all-or-nothing — it covers every route, custom domain,
+  // workers.dev hostname and preview of the Worker it is applied to, before any code runs.
+  // Applied to the redirect Worker it would put every short link behind a login, so the
+  // admin surface has to be its own Worker for it to be usable at all.
+  "name": "link-shortener-admin",
+  "main": "src/admin/index.ts",
+  "account_id": "93686db668e1fd06177661df08f7c0cd",
+  "compatibility_date": "2025-05-08",
+  // Local-dev simulation of Access, so the statistics page is runnable on this machine —
+  // which it has never been before. `wrangler dev` populates ctx.access from this block
+  // (and only in dev; it has no effect on a deployed Worker), so ctx.access.getIdentity()
+  // resolves to the identity below instead of the guard in src/admin/index.ts refusing
+  // every local request. The aud is a local placeholder and is not checked by any code of
+  // ours: under D21 the audience is enforced by the Access application at the edge.
+  "access": {
+    "dev": {
+      "aud": "local-dev",
+      "identity": {
+        "email": "adb@symprex.com"
+      }
+    }
+  },
+  // The same dataset the redirect Worker writes (wrangler.worker.jsonc). Note that the
+  // page does not read through this binding — Analytics Engine is write-only over a
+  // binding, and src/admin/queries.ts reads the dataset over the SQL HTTP API instead,
+  // which is what CF_API_TOKEN is for. The binding is declared to associate this Worker
+  // with the dataset it reports on; src/admin/index.ts's Env deliberately does not list
+  // it, because no code here touches it.
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "link_shortener_redirects"
+    }
+  ],
+  // CF_API_TOKEN is deliberately absent from a "vars" block: it is a secret and must never
+  // be checked into this file. It is the bearer token src/admin/queries.ts puts on its
+  // Analytics Engine SQL API calls, and is set once per deploy target with:
+  //   pnpm exec wrangler secret put CF_API_TOKEN -c wrangler.admin.jsonc
+  // using a token scoped to Account Analytics read on this account. Without it every
+  // section of the page renders its own inline error notice rather than failing the page.
+  //
+  // No CF_ACCESS_TEAM_DOMAIN or CF_ACCESS_AUD either: those existed only for the
+  // hand-written JWT verifier that D21 deleted, and the audience is no longer checked in
+  // code, so carrying them here would only suggest a check that does not happen.
+  //
+  // No "routes" yet: this Worker runs on its own *.workers.dev hostname until the cutover
+  // adds a go.symprex.com/admin* route, which is why src/admin/index.ts serves the page at
+  // both "/" and "/admin".
+  "observability": {
+    "logs": {
+      "enabled": false
+    }
+  }
+}

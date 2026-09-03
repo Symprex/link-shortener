@@ -25,7 +25,20 @@
             "lint": "pnpm lint",
             "typecheck": "pnpm typecheck",
             "build": "pnpm build",
-            "notes": "There is no test suite here at all and no CI workflow, so nothing runs on a pull request. A change is proven by `pnpm typecheck` plus a description of what a person should click; do not report a change as verified on the strength of a lint pass. ESLint is also the formatter — the antfu config carries the stylistic rules, and lint-staged runs `eslint --fix`, so there is no separate Prettier or oxfmt step. `pnpm typecheck` is `nuxt typecheck` and needs `.nuxt` to exist, which `postinstall` generates via `nuxt prepare`: on a fresh clone run `pnpm install` first or it fails on missing generated types rather than on your change. Components are shadcn-vue, generated into app/components/ui by the shadcn CLI against components.json — treat them as generated, add wrappers beside them rather than editing them in place. shadcn-nuxt is configured with an empty prefix, so they are auto-imported globally and need no import; the explicit `@/components/ui/...` form in existing code is for the non-component exports beside them. app/components/spark-ui is a second, hand-written set and is not generated. This repository is a fork of miantiao-me/Sink, so a change that could be made the way upstream would make it is cheaper to carry forward."
+            "notes": "There is no test suite here at all and no CI workflow, so nothing runs on a pull request. A change is proven by `pnpm typecheck` plus a description of what a person should click; do not report a change as verified on the strength of a lint pass. `pnpm typecheck` is `nuxt typecheck` and needs `.nuxt` to exist, which `postinstall` generates via `nuxt prepare`: on a fresh clone run `pnpm install` first or it fails on missing generated types rather than on your change. Components are shadcn-vue, generated into app/components/ui by the shadcn CLI against components.json — treat them as generated, add wrappers beside them rather than editing them in place. shadcn-nuxt is configured with an empty prefix, so they are auto-imported globally and need no import; the explicit `@/components/ui/...` form in existing code is for the non-component exports beside them. app/components/spark-ui is a second, hand-written set and is not generated. This repository is a fork of miantiao-me/Sink, so a change that could be made the way upstream would make it is cheaper to carry forward. This is the legacy Nuxt tree, deleted in a later PR; ESLint stays scoped to it until then, and `scripts/` stays here too since build-map.js and build-colo.js are themselves legacy Nuxt build helpers."
+        },
+        {
+            "name": "src",
+            "paths": [
+                "src/**",
+                "links/**"
+            ],
+            "format": "pnpm exec oxfmt \"{file}\"",
+            "lint": "pnpm lint",
+            "test": "pnpm exec vitest run",
+            "testFilter": "pnpm exec vitest run {filter}",
+            "typecheck": "pnpm run typecheck:worker",
+            "notes": "The new plain TypeScript Cloudflare Worker tree, plus the git-defined links data — linted and formatted by oxlint/oxfmt (per D19) rather than the ESLint config the app scope still uses. `pnpm lint` runs both ESLint over the legacy tree and oxlint over this one, and fails if either does. `test` runs the vitest projects that cover src/** (`redirect` against wrangler.worker.jsonc, `admin` against wrangler.admin.jsonc); append `testFilter` with a project name or file pattern to narrow it, e.g. `pnpm exec vitest run redirect`. `typecheck` is `pnpm run typecheck:worker`, not the app scope's `pnpm typecheck` (which is `nuxt typecheck` and does not cover src/**)."
         }
     ],
     "commit": {

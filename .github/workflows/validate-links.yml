@@ -1,0 +1,87 @@
+name: Validate links
+
+# Gates a pull request that touches links/**: schema, slug regex, filename-matches-slug,
+# duplicate slugs and the reserved "admin" slug (D16). No install step — the validator
+# has no runtime dependencies and Node runs its .ts source directly.
+#
+# Also flags a changed target: if a slug present both before and after the PR has a
+# different `url`, a single sticky PR comment names the old and new target for every
+# such slug. A slug only added or only deleted is not a target change and gets no
+# comment; the step is skipped entirely (not failed) when there is nothing to say.
+on:
+  pull_request:
+    paths:
+      - 'links/**'
+
+concurrency:
+  group: validate-links-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - run: node scripts/validate-links.ts
+
+      - name: Check out links/ at the merge base
+        id: base-links
+        run: |
+          merge_base=$(git merge-base HEAD "origin/${{ github.event.pull_request.base.ref }}")
+          rm -rf /tmp/base-links
+          mkdir -p /tmp/base-links
+          git archive "$merge_base" -- links | tar -x -C /tmp/base-links
+          echo "dir=/tmp/base-links/links" >> "$GITHUB_OUTPUT"
+
+      - name: Detect target changes
+        id: target-changes
+        run: |
+          node scripts/validate-links.ts diff "${{ steps.base-links.outputs.dir }}" links > /tmp/target-change-comment.md
+          if [ -s /tmp/target-change-comment.md ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post or update the target-change comment
+        if: steps.target-changes.outputs.found == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs')
+            const body = fs.readFileSync('/tmp/target-change-comment.md', 'utf8')
+            const marker = '<!-- validate-links:target-change -->'
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            })
+            const existing = comments.find(comment => comment.body.includes(marker))
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              })
+            }
+            else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              })
+            }

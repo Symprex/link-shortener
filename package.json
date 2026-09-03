@@ -15,9 +15,16 @@
     "preview": "wrangler pages dev dist",
     "deploy": "wrangler pages deploy dist",
     "postinstall": "npm run build:map && nuxt prepare",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "typecheck": "nuxt typecheck",
+    "lint": "node scripts/lint.mjs",
+    "lint:fix": "eslint . --fix && oxlint --no-error-on-unmatched-pattern --fix src links && oxfmt src links",
+    "typecheck": "nuxt typecheck && npm run typecheck:worker",
+    "typecheck:worker": "wrangler types --config wrangler.worker.jsonc worker-configuration.d.ts && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
+    "generate-links": "node scripts/generate-links.ts",
+    "predeploy:worker": "npm run generate-links && node scripts/validate-links.ts",
+    "deploy:worker": "npm run predeploy:worker && wrangler deploy -c wrangler.worker.jsonc",
+    "deploy:admin": "wrangler deploy -c wrangler.admin.jsonc",
+    "verify:deployment": "node scripts/verify-deployment.ts",
+    "check:sql": "node scripts/check-analytics-sql.ts",
     "wrangler": "wrangler",
     "lint-staged": "lint-staged"
   },
@@ -55,24 +62,29 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.19.0",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@nuxt/eslint": "^1.9.0",
     "@nuxt/eslint-config": "^1.9.0",
     "@nuxthub/core": "^0.8.27",
     "@nuxtjs/color-mode": "^3.5.2",
     "@nuxtjs/i18n": "^9.5.6",
     "@nuxtjs/tailwindcss": "7.0.0-beta.1",
+    "@types/node": "^26.4.1",
     "@vueuse/integrations": "^13.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "eslint": "^9.39.4",
     "lint-staged": "^16.2.3",
     "nuxt": "^4.4.6",
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0",
     "shadcn-nuxt": "^2.2.0",
     "simple-git-hooks": "^2.13.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
+    "vitest": "^4.1.11",
     "vue-tsc": "^2.2.12",
-    "wrangler": "^4.77.0"
+    "wrangler": "^4.128.0"
   },
   "pnpm": {
     "overrides": {
@@ -108,8 +120,18 @@
     "pre-commit": "npm run lint-staged"
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx,vue}": [
+    "./*.{js,jsx,ts,tsx,vue}": [
       "eslint --fix"
+    ],
+    "{app,server,i18n,schemas,scripts}/**/*.{js,jsx,ts,tsx,vue}": [
+      "eslint --fix"
+    ],
+    "src/**/*.{js,jsx,ts,tsx}": [
+      "oxfmt",
+      "oxlint --fix"
+    ],
+    "links/**/*.json": [
+      "oxfmt"
     ]
   }
 }
