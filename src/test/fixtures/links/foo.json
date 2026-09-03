@@ -1,8 +1,5 @@
 {
-  "id": "0000000foo",
   "url": "https://x/y",
   "slug": "foo",
-  "comment": "Fixture for the redirect Worker's own tests — not a real link.",
-  "createdAt": 1735689600,
-  "updatedAt": 1735689600
+  "comment": "Fixture for the redirect Worker's own tests — not a real link."
 }

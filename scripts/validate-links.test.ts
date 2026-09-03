@@ -13,12 +13,9 @@ import {
 
 function link(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
-    id: 'kfde65bxsc',
     url: 'https://www.symprex.com/careers',
     slug: 'careers',
     comment: 'Symprex careers page',
-    createdAt: 1735689600,
-    updatedAt: 1735689600,
     ...overrides,
   })
 }
@@ -83,16 +80,28 @@ describe('validateLinkFiles', () => {
   })
 
   it('rejects a missing required field', () => {
-    const content = JSON.stringify({
-      id: 'kfde65bxsc',
-      slug: 'careers',
-      createdAt: 1735689600,
-      updatedAt: 1735689600,
-    })
+    const content = JSON.stringify({ slug: 'careers' })
     const errors = validateLinkFiles([{ filename: 'careers.json', content }])
     expect(errors).toEqual([
       'careers.json: field "url" is required and must be a non-empty string',
     ])
+  })
+
+  // These three came from the Sink fork's KV schema and are read by nothing here:
+  // analytics indexes by slug (src/analytics.ts, D14), and git records creation and
+  // modification more accurately than a hand-edited timestamp ever did. They are
+  // rejected rather than merely ignored, so a file copied from an old branch — or
+  // exported from the live KV namespace by the cutover script — fails CI instead of
+  // silently carrying a dead field back in.
+  it.each([
+    ['id', 'kfde65bxsc'],
+    ['createdAt', 1735689600],
+    ['updatedAt', 1735689600],
+  ])('rejects the retired Sink field "%s"', (field, value) => {
+    const errors = validateLinkFiles([
+      { filename: 'careers.json', content: link({ [field]: value }) },
+    ])
+    expect(errors).toEqual([`careers.json: unexpected field "${field}"`])
   })
 
   it('reports every problem in a file, not just the first', () => {

@@ -3,10 +3,7 @@
 // sides of the generated bundle agree on the shape without either importing the other's
 // runtime.
 export interface Link {
-  id: string;
   url: string;
   slug: string;
   comment?: string;
-  createdAt: number;
-  updatedAt: number;
 }

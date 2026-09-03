@@ -1,8 +1,11 @@
 // Validates every file in links/ against the schema documented in
 // docs/links.md: exactly the documented fields, the slug regex, the filename
-// matching the slug, no duplicate slugs, and no reserved slug. Runs with
-// plain `node` (no build step, no runtime dependencies) so it can run in CI
-// exactly as it runs on a developer's machine.
+// matching the slug, no duplicate slugs, and no reserved slug. The schema is
+// deliberately three fields — the slug is the link's only identity, and git
+// carries the history that `id`, `createdAt` and `updatedAt` used to
+// duplicate, so those three are rejected as unexpected rather than tolerated.
+// Runs with plain `node` (no build step, no runtime dependencies) so it can
+// run in CI exactly as it runs on a developer's machine.
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,12 +18,10 @@ export interface LinkFile {
 export const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 export const RESERVED_SLUGS = new Set(['admin'])
 
-const REQUIRED_STRING_FIELDS = ['id', 'url', 'slug'] as const
-const REQUIRED_NUMBER_FIELDS = ['createdAt', 'updatedAt'] as const
+const REQUIRED_STRING_FIELDS = ['url', 'slug'] as const
 const OPTIONAL_STRING_FIELDS = ['comment'] as const
 const ALLOWED_FIELDS = new Set<string>([
   ...REQUIRED_STRING_FIELDS,
-  ...REQUIRED_NUMBER_FIELDS,
   ...OPTIONAL_STRING_FIELDS,
 ])
 
@@ -67,11 +68,6 @@ export function validateLinkFiles(files: LinkFile[]): string[] {
     for (const field of REQUIRED_STRING_FIELDS) {
       if (typeof record[field] !== 'string' || record[field] === '')
         errors.push(`${label}: field "${field}" is required and must be a non-empty string`)
-    }
-
-    for (const field of REQUIRED_NUMBER_FIELDS) {
-      if (typeof record[field] !== 'number' || !Number.isFinite(record[field]))
-        errors.push(`${label}: field "${field}" is required and must be a number`)
     }
 
     if ('comment' in record && typeof record.comment !== 'string')

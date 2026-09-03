@@ -10,11 +10,8 @@ import { generateLinks, generateLinksModule } from './generate-links.ts'
 
 function link(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
-    id: 'kfde65bxsc',
     url: 'https://www.symprex.com/careers',
     slug: 'careers',
-    createdAt: 1735689600,
-    updatedAt: 1735689600,
     ...overrides,
   })
 }

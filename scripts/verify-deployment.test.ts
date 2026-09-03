@@ -262,21 +262,15 @@ describe('expectedRedirects', () => {
       {
         filename: 'links/careers.json',
         content: JSON.stringify({
-          id: 'kfde65bxsc',
           url: 'https://www.symprex.com/careers',
           slug: 'careers',
-          createdAt: 1735689600,
-          updatedAt: 1735689600,
         }),
       },
       {
         filename: 'links/status.json',
         content: JSON.stringify({
-          id: 'gw94ym3tma',
           url: 'https://www.symprex.com/status',
           slug: 'status',
-          createdAt: 1735862400,
-          updatedAt: 1735862400,
         }),
       },
     ]

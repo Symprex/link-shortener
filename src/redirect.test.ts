@@ -158,7 +158,7 @@ describe("the redirect worker", () => {
 });
 
 describe("resolveLink", () => {
-  const link = { id: "abc", url: "https://x/y", slug: "Foo", createdAt: 0, updatedAt: 0 };
+  const link = { url: "https://x/y", slug: "Foo" };
 
   it("finds a link keyed by the lowercase form of the slug", () => {
     expect(resolveLink({ foo: link }, "FOO")).toBe(link);
@@ -178,7 +178,7 @@ describe("resolveLink", () => {
 
 describe("redirectFor", () => {
   const links = {
-    admin: { id: "abc", url: "https://x/y", slug: "admin", createdAt: 0, updatedAt: 0 },
+    admin: { url: "https://x/y", slug: "admin" },
   };
 
   it('treats the reserved slug "admin" as unknown even if a link happens to use it', () => {
