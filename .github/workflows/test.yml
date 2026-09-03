@@ -1,0 +1,46 @@
+name: Test
+
+# Runs the vitest suite (scripts/**, src/*, src/admin/**) on every pull request and on
+# every push to master. Nothing else in CI ever ran vitest: validate-links.yml only runs
+# validate-links.ts, and deploy-worker.yml runs typecheck:worker plus the deployed proof
+# script but no test runner — so a regression test added for a defect that survived
+# three rounds of review (src/admin/page.test.ts) only ever fired when a human
+# remembered to run it by hand. This is the gate that makes it fire every time instead.
+#
+# pnpm lint is deliberately not part of this workflow: the legacy Nuxt tree carries
+# ~4300 pre-existing ESLint errors and always fails, and that tree is deleted in a later
+# PR. typecheck:worker runs here instead, since nothing else gates it on a pull request —
+# deploy-worker.yml only runs it on a push to master, after the PR has already merged.
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm generate-links
+
+      - run: pnpm run typecheck:worker
+
+      - run: pnpm exec vitest run

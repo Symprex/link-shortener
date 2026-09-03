@@ -139,7 +139,7 @@ param(
     [string] $AllowGroupName,
     [string] $AllowGroupId,
     [string] $AllowReusablePolicyId,
-    [string] $PolicyPath = (Join-Path $PSScriptRoot '..\access\admin-policy.jsonc'),
+    [string] $PolicyPath = (Join-Path $PSScriptRoot '../access/admin-policy.jsonc'),
     [string] $SessionDuration = '24h'
 )
 
@@ -311,6 +311,49 @@ function Invoke-CfApi {
     }
 }
 
+function Get-CfApiListing {
+    <#
+      Fetches every page of a Cloudflare "list" endpoint (accounts of Access
+      applications, groups, reusable policies, Workers scripts) and returns
+      them concatenated into one `result`, in the same success/errorDetail
+      shape Invoke-CfApi -AllowFailure returns.
+
+      Cloudflare paginates these with a `result_info` block (page, per_page,
+      total_pages) rather than returning everything in one response. Reading
+      only the first page — as this script used to — silently truncates the
+      listing an id or name lookup is matched against: a real account has
+      already returned 41 Access applications in a single call, comfortably
+      one page today but not guaranteed to stay that way, and a listing that
+      grows past one page turns a real hit into a false "does not exist" or a
+      missed match that creates a duplicate application instead of updating
+      the existing one. Centralised here rather than repeated at every call
+      site that lists something.
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $Path,
+        [switch] $AllowFailure
+    )
+
+    $results = @()
+    $page = 1
+    $perPage = 50
+    while ($true) {
+        $separator = if ($Path.Contains('?')) { '&' } else { '?' }
+        $pagedPath = "$Path${separator}page=$page&per_page=$perPage"
+        $response = Invoke-CfApi -Method GET -Path $pagedPath -AllowFailure:$AllowFailure
+        if (-not $response.success) { return $response }
+
+        $pageResult = Get-SafeProperty -Object $response -Property 'result' -Fallback ''
+        if ($pageResult) { $results += @($pageResult) }
+
+        $resultInfo = Get-SafeProperty -Object $response -Property 'result_info' -Fallback ''
+        $totalPages = if ($resultInfo) { Get-SafeProperty -Object $resultInfo -Property 'total_pages' -Fallback 1 } else { 1 }
+        if ($page -ge [int]$totalPages) { break }
+        $page++
+    }
+    return [pscustomobject]@{ success = $true; result = $results }
+}
+
 # ---------------------------------------------------------------------------
 # 1. Prerequisites
 # ---------------------------------------------------------------------------
@@ -384,11 +427,17 @@ if ($AllowEmail.Count -eq 0 -and -not $AllowEmailDomain -and -not $AllowGroupNam
     }
 }
 
-# Exactly one policy basis must be given (from a parameter or the file above).
-# Admitting nobody would create an application that locks the engineer out;
-# admitting everybody is never what was intended. Neither default is safe, so
-# require the choice — this guard fires just as it always did, whichever
-# source was consulted.
+# At least one policy basis must be given (from a parameter or the file
+# above). Admitting nobody would create an application that locks the
+# engineer out; admitting everybody is never what was intended. Neither
+# default is safe, so require the choice.
+#
+# More than one basis is not rejected: Cloudflare Access ORs every "include"
+# rule together (see access/admin-policy.jsonc), so setting, say, both
+# -AllowEmailDomain and -AllowReusablePolicyId is a legitimate way to admit
+# "this domain, plus whoever that policy already admits" — not a mistake this
+# script can tell apart from one. What it can do is make that widening
+# impossible to miss, below.
 $policyBases = @()
 if ($AllowEmail.Count -gt 0) { $policyBases += 'AllowEmail' }
 if ($AllowEmailDomain) { $policyBases += 'AllowEmailDomain' }
@@ -406,6 +455,9 @@ Choose one, either as a parameter or in the policy file ($PolicyPath):
     -AllowReusablePolicyId "<uuid>"            an existing reusable Access policy, by id
 "@
 }
+if ($policyBases.Count -gt 1) {
+    Write-Warn "Multiple allow-rule bases are set ($($policyBases -join ', ')): Cloudflare Access ORs them, so this application will admit anyone matching ANY of them, not their intersection. If that is not deliberate, remove all but one."
+}
 Write-Ok "Allow rule basis: $($policyBases -join ', ') (from $policySource)"
 
 # ---------------------------------------------------------------------------
@@ -414,7 +466,7 @@ Write-Ok "Allow rule basis: $($policyBases -join ', ') (from $policySource)"
 
 Write-Step 'Verifying token permissions'
 
-$apps = Invoke-CfApi -Method GET -Path "/accounts/$AccountId/access/apps" -AllowFailure
+$apps = Get-CfApiListing -Path "/accounts/$AccountId/access/apps" -AllowFailure
 if (-not $apps.success) {
     Stop-WithGuidance -Problem "Cannot list Access applications for account $AccountId." -Guidance @"
 $($apps.errorDetail)
@@ -424,7 +476,7 @@ scoped to a different account. Check the token at
 https://dash.cloudflare.com/profile/api-tokens
 "@
 }
-Write-Ok "Token can read Access applications ($($apps.result.Count) existing)"
+Write-Ok "Token can read Access applications ($(@($apps.result).Count) existing)"
 
 # ---------------------------------------------------------------------------
 # 3. Zero Trust organisation must already exist
@@ -433,9 +485,17 @@ Write-Ok "Token can read Access applications ($($apps.result.Count) existing)"
 Write-Step 'Checking the Zero Trust organisation'
 
 $org = Invoke-CfApi -Method GET -Path "/accounts/$AccountId/access/organizations" -AllowFailure
-if (-not $org.success -or -not $org.result) {
+# Guarded rather than dereferenced directly: under Set-StrictMode -Version
+# Latest, reading a missing property throws a raw engine error. $org.result and
+# $org.errorDetail are populated on opposite branches of Invoke-CfApi
+# -AllowFailure — a failure response carries errorDetail but no result, a
+# success response carries result but no errorDetail — so whichever one this
+# guard reaches for on a given run is exactly the one that may not exist.
+$orgResult = Get-SafeProperty -Object $org -Property 'result' -Fallback ''
+if (-not $org.success -or -not $orgResult) {
+    $orgErrorDetail = Get-SafeProperty -Object $org -Property 'errorDetail' -Fallback ''
     Stop-WithGuidance -Problem "No Zero Trust organisation is provisioned for account $AccountId." -Guidance @"
-$(if ($org.errorDetail) { $org.errorDetail })
+$(if ($orgErrorDetail) { $orgErrorDetail })
 
 An Access application cannot exist without one. Create the organisation once, in
 the dashboard: Zero Trust > Settings > Custom Pages, or complete the Zero Trust
@@ -443,12 +503,9 @@ onboarding, which assigns the team domain. Then re-run this script.
 "@
 }
 
-# Guarded rather than dereferenced directly: under Set-StrictMode -Version
-# Latest, reading a missing property throws a raw engine error that would
-# replace the actionable message below.
 $authDomain = $null
-if (($org.result -is [pscustomobject]) -and ($org.result.PSObject.Properties.Name -contains 'auth_domain')) {
-    $authDomain = $org.result.auth_domain
+if (($orgResult -is [pscustomobject]) -and ($orgResult.PSObject.Properties.Name -contains 'auth_domain')) {
+    $authDomain = $orgResult.auth_domain
 }
 if ([string]::IsNullOrWhiteSpace($authDomain)) {
     Stop-WithGuidance -Problem "The Zero Trust organisation for account $AccountId returned no team domain." -Guidance @'
@@ -476,7 +533,7 @@ Write-Step 'Resolving the Worker id'
 # the same 32-hex-character shape as the worker_id example above. There is no
 # per-name lookup endpoint that returns this id directly, so the full list is
 # fetched and matched by name.
-$scripts = Invoke-CfApi -Method GET -Path "/accounts/$AccountId/workers/scripts" -AllowFailure
+$scripts = Get-CfApiListing -Path "/accounts/$AccountId/workers/scripts" -AllowFailure
 if (-not $scripts.success) {
     Stop-WithGuidance -Problem "Cannot list Workers scripts for account $AccountId." -Guidance @"
 $($scripts.errorDetail)
@@ -486,9 +543,10 @@ https://dash.cloudflare.com/profile/api-tokens
 "@
 }
 
-$matchingScripts = Find-ByProperty -Items $scripts.result -Property 'id' -Value $WorkerName
+$scriptsResult = Get-SafeProperty -Object $scripts -Property 'result' -Fallback ''
+$matchingScripts = Find-ByProperty -Items $scriptsResult -Property 'id' -Value $WorkerName
 if ($matchingScripts.Count -eq 0) {
-    $available = (@($scripts.result) | ForEach-Object { Get-SafeProperty -Object $_ -Property 'id' }) -join ', '
+    $available = (@($scriptsResult) | ForEach-Object { Get-SafeProperty -Object $_ -Property 'id' }) -join ', '
     Stop-WithGuidance -Problem "No Worker named '$WorkerName' exists in account $AccountId." -Guidance @"
 Deploy it first:
     pnpm exec wrangler deploy -c wrangler.admin.jsonc
@@ -522,7 +580,7 @@ if ($AllowEmailDomain) {
     Write-Info "admit any address at $AllowEmailDomain"
 }
 if ($AllowGroupName) {
-    $groups = Invoke-CfApi -Method GET -Path "/accounts/$AccountId/access/groups" -AllowFailure
+    $groups = Get-CfApiListing -Path "/accounts/$AccountId/access/groups" -AllowFailure
     if (-not $groups.success) {
         Stop-WithGuidance -Problem "Could not list Access groups to resolve '$AllowGroupName'." -Guidance @"
 $($groups.errorDetail)
@@ -552,7 +610,7 @@ if ($AllowGroupId) {
     # against groups first, since -AllowGroupId/the file's groupId declares
     # that assumption; fall back to reusable policies only to give a precise
     # "wrong key" failure rather than a silent misconfiguration.
-    $groups = Invoke-CfApi -Method GET -Path "/accounts/$AccountId/access/groups" -AllowFailure
+    $groups = Get-CfApiListing -Path "/accounts/$AccountId/access/groups" -AllowFailure
     if (-not $groups.success) {
         Stop-WithGuidance -Problem "Could not list Access groups to verify '$AllowGroupId'." -Guidance @"
 $($groups.errorDetail)
@@ -567,7 +625,7 @@ The token needs 'Access: Organizations, Identity Providers, and Groups > Read'
         Write-Info "admit group '$(Get-SafeProperty -Object (@($groupMatch)[0]) -Property 'name')' ($AllowGroupId)"
     }
     else {
-        $reusablePolicies = Invoke-CfApi -Method GET -Path "/accounts/$AccountId/access/policies" -AllowFailure
+        $reusablePolicies = Get-CfApiListing -Path "/accounts/$AccountId/access/policies" -AllowFailure
         if (-not $reusablePolicies.success) {
             Stop-WithGuidance -Problem "'$AllowGroupId' is not an Access group in account $AccountId, and reusable policies could not be listed to check it further." -Guidance @"
 $($reusablePolicies.errorDetail)
@@ -587,7 +645,7 @@ the "reusablePolicyId" key instead of "groupId").
     }
 }
 if ($AllowReusablePolicyId) {
-    $reusablePolicies = Invoke-CfApi -Method GET -Path "/accounts/$AccountId/access/policies" -AllowFailure
+    $reusablePolicies = Get-CfApiListing -Path "/accounts/$AccountId/access/policies" -AllowFailure
     if (-not $reusablePolicies.success) {
         Stop-WithGuidance -Problem "Could not list reusable Access policies to verify '$AllowReusablePolicyId'." -Guidance @"
 $($reusablePolicies.errorDetail)
@@ -596,13 +654,13 @@ The token needs 'Access: Apps and Policies > Edit' (which also covers reading
 reusable policies).
 "@
     }
-    $policyMatch = Find-ByProperty -Items $reusablePolicies.result -Property 'id' -Value $AllowReusablePolicyId
+    $policyMatch = Find-ByProperty -Items (Get-SafeProperty -Object $reusablePolicies -Property 'result' -Fallback '') -Property 'id' -Value $AllowReusablePolicyId
     if ($policyMatch) {
         $reusablePolicyIds += $AllowReusablePolicyId
         Write-Info "admit reusable policy '$(Get-SafeProperty -Object (@($policyMatch)[0]) -Property 'name')' ($AllowReusablePolicyId)"
     }
     else {
-        $groups = Invoke-CfApi -Method GET -Path "/accounts/$AccountId/access/groups" -AllowFailure
+        $groups = Get-CfApiListing -Path "/accounts/$AccountId/access/groups" -AllowFailure
         if (-not $groups.success) {
             Stop-WithGuidance -Problem "'$AllowReusablePolicyId' is not a reusable Access policy in account $AccountId, and Access groups could not be listed to check it further." -Guidance @"
 $($groups.errorDetail)
@@ -718,7 +776,15 @@ if ($existing) {
 else {
     if ($PSCmdlet.ShouldProcess("Access application '$ApplicationName' for Worker $WorkerName", 'Create')) {
         $created = Invoke-CfApi -Method POST -Path "/accounts/$AccountId/access/apps" -Body $desired
-        $appId = $created.result.id
+        # Guarded rather than dereferenced directly (same Set-StrictMode reason
+        # as elsewhere): a well-formed POST response should always carry
+        # result.id, but "should" is exactly the assumption that broke this
+        # script twice already.
+        $createdResult = Get-SafeProperty -Object $created -Property 'result' -Fallback ''
+        $appId = Get-SafeProperty -Object $createdResult -Property 'id' -Fallback ''
+        if (-not $appId) {
+            throw 'Application was created but the response carried no id. Check the Access dashboard before re-running.'
+        }
         Write-Ok "Application created: $appId"
     }
     else {

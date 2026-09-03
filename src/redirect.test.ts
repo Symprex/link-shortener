@@ -69,6 +69,18 @@ describe("the redirect worker", () => {
     const darkBlock = darkBlockMatch?.[1] ?? "";
     expect(darkBlock).toContain("--s-page-bg: #0f1117");
     expect(darkBlock).toContain("--pico-primary: var(--sig365-theme-link-color)");
+
+    // Neither the light block (`:root:not([data-theme=dark])`) nor the dark block
+    // (`:root:not([data-theme])`) matches a root carrying `data-theme="dark"` — that state
+    // falls between the two, so every --s-* token would be undeclared rather than merely
+    // reverted to Pico's palette, blanking body, .panel and the bars. It is safe today only
+    // because this page never emits a `data-theme` attribute and has no client JavaScript
+    // to add one. If a theme toggle is ever added, THEME_CSS's selectors must be revisited
+    // together with whatever sets the attribute — do not just delete this assertion. (The
+    // literal string "data-theme" legitimately appears inside THEME_CSS's own selectors, so
+    // this checks the <html> tag specifically rather than the whole body.)
+    expect(body).toMatch(/<html lang="en">/);
+    expect(body).not.toMatch(/<html[^>]*\bdata-theme/);
   });
 
   it("loads no external stylesheet, script or image on the 404 page", async () => {

@@ -101,6 +101,50 @@ export function checkAdminRefused(
   return fail(name, `${NOT_REFUSED_DETAIL}, got ${status}`)
 }
 
+export interface AdminOutcome {
+  status: number
+  location: string | null
+}
+
+/**
+ * The proof that Access is actually wired up, not merely that the admin Worker is not
+ * exposed. `checkAdminRefused` alone would still report 54/54 green if the Cloudflare
+ * Access application were deleted or detached: the Worker's own `403` fail-closed guard
+ * answers every request either way. This check requires that at least one of the admin
+ * requests this run made was answered with a `3xx` redirected to a
+ * `cloudflareaccess.com` login — the one signal that can only come from Access actually
+ * enforcing at the edge, not from the Worker's own belt-and-braces guard.
+ *
+ * An empty `outcomes` — every admin fetch faulted before it could be answered — is an
+ * ERROR, not a FAIL: no request was answered either way, so no verdict about Access can
+ * be drawn from it.
+ */
+export function checkAccessWiredUp(name: string, outcomes: AdminOutcome[]): CheckResult {
+  if (outcomes.length === 0)
+    return error(name, 'no admin request was ever answered — nothing was proved about Access')
+
+  for (const { status, location } of outcomes) {
+    if (status < 300 || status >= 400 || location === null)
+      continue
+
+    let hostname: string
+    try {
+      hostname = new URL(location).hostname
+    }
+    catch {
+      continue
+    }
+
+    if (isAccessLoginHost(hostname))
+      return pass(name, `saw a cloudflareaccess.com login redirect (${hostname})`)
+  }
+
+  return fail(
+    name,
+    'no admin request was answered with a cloudflareaccess.com login redirect — Access may be detached, even though every path still refused',
+  )
+}
+
 /**
  * The refusal must not be storable by a shared cache. Access's own header is
  * `private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0`,
@@ -130,10 +174,23 @@ export function checkLocation(name: string, expected: string, actual: string | n
       )
 }
 
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /**
  * The admin refusal body must carry none of the statistics page's content: table
  * markup, the word "Clicks", the chart's SVG, or any of the real slugs it lists.
  * Checked case-insensitively, since a leak would still be a leak in any case.
+ *
+ * The markup terms are matched as plain substrings — `<table` and `<svg` cannot occur
+ * in ordinary prose. The slugs are matched on a word boundary instead: the live slugs
+ * (`careers`, `status`, `support`) are ordinary English words, and Cloudflare's own
+ * Access login page is free to say "unsupported browser" or "connection statuses"
+ * without that being a leak of the statistics table's support/status rows. The same
+ * file already prefers exact matching over substring matching for this reason —
+ * `isAccessLoginHost` does hostname equality rather than `.includes()` — this is the
+ * same precision applied to slugs.
  */
 export function checkBodyExcludesStatistics(
   name: string,
@@ -141,8 +198,13 @@ export function checkBodyExcludesStatistics(
   slugs: string[],
 ): CheckResult {
   const lower = bodyText.toLowerCase()
-  const forbidden = ['<table', 'clicks', '<svg', ...slugs.map(slug => slug.toLowerCase())]
-  const leaked = forbidden.filter(term => lower.includes(term))
+  const markupTerms = ['<table', 'clicks', '<svg']
+  const leaked = markupTerms.filter(term => lower.includes(term))
+  for (const slug of slugs) {
+    const boundary = new RegExp(`\\b${escapeRegExp(slug.toLowerCase())}\\b`)
+    if (boundary.test(lower))
+      leaked.push(slug.toLowerCase())
+  }
   return leaked.length === 0
     ? pass(name, 'no statistics content in refusal body')
     : fail(name, `refusal body leaked: ${leaked.join(', ')}`)
@@ -288,7 +350,9 @@ async function fetchSafely(
  * `cloudflareaccess.com`, loudly not-200 — no-store, and no leaked statistics content.
  * `headers` carries a forged `Cf-Access-Jwt-Assertion` when present; a bare request
  * otherwise. A failed fetch reports a single ERROR rather than three, since none of the
- * three assertions could actually be evaluated.
+ * three assertions could actually be evaluated. Also returns the raw status/location
+ * outcome (or null on a failed fetch), so the caller can feed it into the
+ * once-per-run `checkAccessWiredUp` assertion.
  */
 async function checkAdminRequest(
   baseUrl: string,
@@ -297,17 +361,20 @@ async function checkAdminRequest(
   slugs: string[],
   headers: Record<string, string> | undefined,
   timeoutMs: number,
-): Promise<CheckResult[]> {
+): Promise<{ results: CheckResult[], outcome: AdminOutcome | null }> {
   const outcome = await fetchSafely(`${baseUrl}${path}`, { headers }, timeoutMs)
   if (!outcome.ok)
-    return [error(`${label}: request failed`, outcome.errorMessage)]
+    return { results: [error(`${label}: request failed`, outcome.errorMessage)], outcome: null }
 
   const { status, location, cacheControl, bodyText } = outcome.result
-  return [
-    checkAdminRefused(`${label}: refused`, status, location),
-    checkNoStore(`${label}: no-store`, cacheControl),
-    checkBodyExcludesStatistics(`${label}: no leaked content`, bodyText, slugs),
-  ]
+  return {
+    results: [
+      checkAdminRefused(`${label}: refused`, status, location),
+      checkNoStore(`${label}: no-store`, cacheControl),
+      checkBodyExcludesStatistics(`${label}: no leaked content`, bodyText, slugs),
+    ],
+    outcome: { status, location },
+  }
 }
 
 /**
@@ -337,12 +404,13 @@ async function checkRedirectRequest(
   return results
 }
 
-async function runAdminChecks(
+export async function runAdminChecks(
   adminBaseUrl: string,
   slugs: string[],
   timeoutMs: number,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = []
+  const outcomes: AdminOutcome[] = []
 
   const paths: Array<[path: string, label: string]> = [
     ['/', 'admin GET /'],
@@ -353,9 +421,17 @@ async function runAdminChecks(
     ['/admin?days=7', 'admin GET /admin?days=7'],
   ]
   for (const [path, label] of paths) {
-    results.push(
-      ...(await checkAdminRequest(adminBaseUrl, path, label, slugs, undefined, timeoutMs)),
+    const { results: pathResults, outcome } = await checkAdminRequest(
+      adminBaseUrl,
+      path,
+      label,
+      slugs,
+      undefined,
+      timeoutMs,
     )
+    results.push(...pathResults)
+    if (outcome !== null)
+      outcomes.push(outcome)
   }
 
   const forgedTokens: Array<[token: string, label: string]> = [
@@ -364,17 +440,20 @@ async function runAdminChecks(
     [buildAlgNoneAccessToken(), 'admin GET /admin with alg:none Cf-Access-Jwt-Assertion'],
   ]
   for (const [token, label] of forgedTokens) {
-    results.push(
-      ...(await checkAdminRequest(
-        adminBaseUrl,
-        '/admin',
-        label,
-        slugs,
-        { 'Cf-Access-Jwt-Assertion': token },
-        timeoutMs,
-      )),
+    const { results: tokenResults, outcome } = await checkAdminRequest(
+      adminBaseUrl,
+      '/admin',
+      label,
+      slugs,
+      { 'Cf-Access-Jwt-Assertion': token },
+      timeoutMs,
     )
+    results.push(...tokenResults)
+    if (outcome !== null)
+      outcomes.push(outcome)
   }
+
+  results.push(checkAccessWiredUp('Access is actually wired up', outcomes))
 
   return results
 }

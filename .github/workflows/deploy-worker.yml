@@ -94,8 +94,8 @@ jobs:
       # deploy permissions, while this call needs Access: Apps and Policies Edit,
       # Access: Organizations, Identity Providers, and Groups Read, and Workers Scripts
       # Read (see the script's own .NOTES). Groups Read stays required even though
-      # access/admin-policy.jsonc now names its allow rule by id (groupId) rather than
-      # by domain: a bare id does not say whether it names an Access group or a
+      # access/admin-policy.jsonc now names its allow rule by id (reusablePolicyId)
+      # rather than by domain: a bare id does not say whether it names an Access group or a
       # reusable policy, so the script reads both the account's groups and its
       # reusable policies to verify which one it is before using it, rather than
       # trusting the assumption. Widening CLOUDFLARE_API_TOKEN to cover both

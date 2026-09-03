@@ -71,18 +71,15 @@ export default {
  * Pico's last selector and never matches (see src/admin/page.ts's STYLE_TAGS for the full
  * diagnosis); no bespoke CSS is needed here regardless (a bare `<code>` already picks up
  * `--s-code-bg`/`--s-code-color` and a bare `<a>` already picks up
- * `--sig365-theme-link-color`, both via the Pico variable overrides in src/theme.ts).
+ * `--sig365-theme-link-color`, both via the Pico variable overrides in src/theme.ts, which
+ * now out-specify Pico's own `:root:not([data-theme...])` declarations — see theme.ts's
+ * header comment for why bare `:root` used to lose that tie).
  */
 function notFound(pathname: string): Response {
   const slug = decodeSlug(stripSlashes(pathname));
   const body = `<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Not found — go.symprex.com</title>
-    <style>${PICO_CSS}</style>
-    <style>${THEME_CSS}</style>
-  </head>
+  ${HEAD}
   <body>
     <main>
       <h1>Not found</h1>
@@ -97,6 +94,22 @@ function notFound(pathname: string): Response {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
+
+/**
+ * Hoisted to a module constant rather than rebuilt per request — the admin page's
+ * equivalent (STYLE_TAGS in src/admin/page.ts) already does this, and there is nothing
+ * request-specific in here (the escaped slug is interpolated separately, in notFound's own
+ * body template). Pico and the theme stay two separate `<style>` tags rather than one
+ * combined block for the reason given in notFound's own doc comment above — Pico's
+ * minified CSS leaves the parser inside an open rule, so merging them back would make the
+ * theme's rules invisible again.
+ */
+const HEAD = `<head>
+    <meta charset="utf-8" />
+    <title>Not found — go.symprex.com</title>
+    <style>${PICO_CSS}</style>
+    <style>${THEME_CSS}</style>
+  </head>`;
 
 /** Decodes a URL path segment, falling back to the raw value if it is not valid percent-encoding. */
 function decodeSlug(rawSlug: string): string {

@@ -8,6 +8,8 @@
   // build helpers (see .symprex/config.json), covered by the app scope's ESLint rather
   // than this gate.
   "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "node_modules/.tmp/tsconfig.scripts.tsbuildinfo",
     "target": "ES2022",
     "lib": ["ES2022"],
     "module": "ESNext",
@@ -15,11 +17,9 @@
     "types": ["node"],
     "allowImportingTsExtensions": true,
     "strict": true,
-    "isolatedModules": true,
-    "skipLibCheck": true,
     "noEmit": true,
-    "incremental": true,
-    "tsBuildInfoFile": "node_modules/.tmp/tsconfig.scripts.tsbuildinfo"
+    "isolatedModules": true,
+    "skipLibCheck": true
   },
   "include": ["scripts/*.ts", "src/test/global-setup.ts"]
 }

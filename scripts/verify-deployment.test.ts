@@ -1,10 +1,11 @@
 import type { LinkFile } from './validate-links.ts'
 import { Buffer } from 'node:buffer'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildAlgNoneAccessToken,
   buildJunkAccessToken,
   buildUnsignedAccessToken,
+  checkAccessWiredUp,
   checkAdminRefused,
   checkBodyExcludesStatistics,
   checkLocation,
@@ -12,6 +13,7 @@ import {
   checkNoStore,
   checkStatus,
   expectedRedirects,
+  runAdminChecks,
   summarize,
 } from './verify-deployment.ts'
 
@@ -75,6 +77,38 @@ describe('checkAdminRefused', () => {
 
   it('fails on any other status too', () => {
     expect(checkAdminRefused('name', 500, null).status).toBe('FAIL')
+  })
+})
+
+describe('checkAccessWiredUp', () => {
+  it('fails when every admin path answered 403 (a detached Access application still fails closed)', () => {
+    const result = checkAccessWiredUp('name', [
+      { status: 403, location: null },
+      { status: 403, location: null },
+      { status: 403, location: null },
+    ])
+    expect(result.status).toBe('FAIL')
+    expect(result.detail).toMatch(/detached|not.*wired|no.*login redirect/i)
+  })
+
+  it('passes when at least one admin path was answered with a cloudflareaccess.com login redirect', () => {
+    const result = checkAccessWiredUp('name', [
+      { status: 403, location: null },
+      { status: 302, location: 'https://symprex.cloudflareaccess.com/cdn-cgi/access/login' },
+    ])
+    expect(result.status).toBe('PASS')
+  })
+
+  it('fails when a redirect goes somewhere other than cloudflareaccess.com', () => {
+    const result = checkAccessWiredUp('name', [
+      { status: 302, location: 'https://example.com/somewhere-else' },
+    ])
+    expect(result.status).toBe('FAIL')
+  })
+
+  it('errors, not fails, when no admin request was ever answered — a verdict about Access cannot be drawn from zero answers', () => {
+    const result = checkAccessWiredUp('name', [])
+    expect(result.status).toBe('ERROR')
   })
 })
 
@@ -149,6 +183,24 @@ describe('checkBodyExcludesStatistics', () => {
     expect(checkBodyExcludesStatistics('name', 'see careers for detail', ['careers']).status).toBe(
       'FAIL',
     )
+  })
+
+  it('passes when a slug is a live one but only appears as part of an unrelated word', () => {
+    // Real slugs: careers, status, support. An Access login page saying a browser is
+    // "unsupported" or listing "statuses" must not be read as the statistics table
+    // leaking the support/status slug rows.
+    const result = checkBodyExcludesStatistics(
+      'name',
+      'This browser is not supported. Please check the statuses of your extensions.',
+      ['status', 'support'],
+    )
+    expect(result.status).toBe('PASS')
+  })
+
+  it('still fails when the slug appears as its own word, not just as a substring of another', () => {
+    const result = checkBodyExcludesStatistics('name', 'see support for detail', ['support'])
+    expect(result.status).toBe('FAIL')
+    expect(result.detail).toContain('support')
   })
 })
 
@@ -257,5 +309,121 @@ describe('forged access tokens', () => {
     const header = JSON.parse(Buffer.from(segments[0], 'base64url').toString('utf8'))
     expect(header.alg).toBe('none')
     expect(segments[2]).toBe('')
+  })
+})
+
+// runAdminChecks drives the real HTTP path (fetchSafely -> checkAdminRequest), so this is
+// the only place the four branches the deployed proof actually depends on can be exercised
+// without a live Worker: a detached-Access run where every path only gets the Worker's own
+// 403 guard, a run where at least one path gets a real Access login redirect, a run where a
+// path is wrongly exposed with a 200, and a run where a request cannot be made at all.
+describe('runAdminChecks (fetch stubbed)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function forbiddenResponse(): Response {
+    return new Response('Forbidden', { status: 403, headers: { 'cache-control': 'no-store' } })
+  }
+
+  it('fails the wired-up assertion when every admin path only ever sees the Worker\'s own 403 — a detached Access application must not read as green', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => forbiddenResponse()),
+    )
+
+    const results = await runAdminChecks('https://admin.example.test', ['careers'], 1000)
+
+    const wired = results.find(result => result.name === 'Access is actually wired up')
+    expect(wired?.status).toBe('FAIL')
+    // Every per-path refusal still passes: the Worker's own guard held.
+    const refusals = results.filter(result => result.name.endsWith(': refused'))
+    expect(refusals.every(result => result.status === 'PASS')).toBe(true)
+  })
+
+  it('passes the wired-up assertion once at least one admin path is answered with a cloudflareaccess.com login redirect', async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        callCount += 1
+        if (callCount === 1) {
+          return new Response(null, {
+            status: 302,
+            headers: {
+              'location': 'https://symprex.cloudflareaccess.com/cdn-cgi/access/login',
+              'cache-control': 'no-store',
+            },
+          })
+        }
+        return forbiddenResponse()
+      }),
+    )
+
+    const results = await runAdminChecks('https://admin.example.test', ['careers'], 1000)
+
+    const wired = results.find(result => result.name === 'Access is actually wired up')
+    expect(wired?.status).toBe('PASS')
+  })
+
+  it('fails loudest of all when an admin path returns 200', async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        callCount += 1
+        if (callCount === 1) {
+          return new Response('<table><tr><td>Clicks</td></tr></table>', {
+            status: 200,
+            headers: { 'cache-control': 'no-store' },
+          })
+        }
+        return forbiddenResponse()
+      }),
+    )
+
+    const results = await runAdminChecks('https://admin.example.test', ['careers'], 1000)
+
+    const refused = results.find(result => result.name === 'admin GET /: refused')
+    expect(refused?.status).toBe('FAIL')
+    expect(refused?.detail).toMatch(/SECURITY/i)
+    expect(refused?.detail).toContain('exposed')
+  })
+
+  it('reports a network fault as its own ERROR outcome, never folded into PASS or FAIL', async () => {
+    let callCount = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        callCount += 1
+        if (callCount === 1)
+          throw new TypeError('fetch failed: getaddrinfo ENOTFOUND')
+        return forbiddenResponse()
+      }),
+    )
+
+    const results = await runAdminChecks('https://admin.example.test', ['careers'], 1000)
+
+    const failedRequest = results.find(result => result.name === 'admin GET /: request failed')
+    expect(failedRequest?.status).toBe('ERROR')
+    expect(failedRequest?.status).not.toBe('FAIL')
+  })
+
+  it('errors, not fails, the wired-up assertion when every admin fetch faults — no request was ever answered, so nothing was proved about Access', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('fetch failed: getaddrinfo ENOTFOUND')
+      }),
+    )
+
+    const results = await runAdminChecks('https://admin.example.test', ['careers'], 1000)
+
+    const wired = results.find(result => result.name === 'Access is actually wired up')
+    expect(wired?.status).toBe('ERROR')
+    // Every per-path request failed too — none of the nine could be answered at all.
+    const requestFailures = results.filter(result => result.name.endsWith(': request failed'))
+    expect(requestFailures).toHaveLength(9)
+    expect(requestFailures.every(result => result.status === 'ERROR')).toBe(true)
   })
 })

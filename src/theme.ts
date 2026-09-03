@@ -14,9 +14,18 @@
 //
 // Both blocks also redeclare the handful of Pico variables (`--pico-*`) that Pico's own
 // reset, typography and table rules read from, so Pico's structure is kept (D2) while its
-// colours follow the Signature365 palette. This module is appended after `PICO_CSS` in each
-// page's `<style>` tag, so on a tie these declarations win the cascade — including inside
-// Pico's own `prefers-color-scheme: dark` block, which would otherwise put its colours back.
+// colours follow the Signature365 palette. Vendored Pico 2.1.1 (src/vendor/pico.ts)
+// declares those same variables on `:root:not([data-theme=dark]),[data-theme=light]` in
+// light mode and on `:root:not([data-theme])` inside its own dark media block — both
+// specificity 0,2,0, which beats bare `:root` (0,1,0) regardless of document order. Bare
+// `:root` here was silently inert in both colour schemes as a result (every override
+// except `--pico-border-color`). The light block below therefore uses
+// `:root:not([data-theme=dark])` rather than `:root:not([data-theme])`: it reaches the same
+// 0,2,0 specificity, but — unlike a bare `[data-theme]` presence check — it matches exactly
+// the set of states Pico's own light selector matches, including once a `data-theme="light"`
+// attribute is present, not only while neither page ever sets the attribute at all. These
+// declarations win the cascade on the resulting tie, appended after `PICO_CSS` in each
+// page's `<style>` tag as they are.
 // `--pico-code-background-color` / `--pico-code-color` are included so a bare `<code>`
 // element — the 404 page's slug, with no bespoke rule of its own — already picks up
 // `--s-code-bg` / `--s-code-color` through Pico's own `<code>` styling.
@@ -30,7 +39,7 @@
 // background any more (Signature365's own pattern: the heading sits on the page
 // background, and only the panel below it is a distinct box; see `.panel` in EXTRA_CSS).
 export const THEME_CSS = `
-:root {
+:root:not([data-theme=dark]) {
   --s-page-bg: #f9fafb;
   --s-page-accent-bg: #ffffff;
   --s-text-color: #374151;
@@ -68,7 +77,7 @@ export const THEME_CSS = `
    OS/browser colour-scheme preference is the equivalent of Signature365's body--dark
    class — the honest way to offer a dark palette here. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --s-page-bg: #0f1117;
     --s-page-accent-bg: #161922;
     --s-text-color: #d1d5db;
