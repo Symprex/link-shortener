@@ -12,7 +12,7 @@
 import type { AnalyticsEngineDataset, AnalyticsExecutionContext } from "./analytics.ts";
 import { recordAnalytics } from "./analytics.ts";
 import { escapeHtml } from "./html.ts";
-import { links } from "./links.generated.ts";
+import { links } from "virtual:links";
 import { redirectFor, stripSlashes } from "./redirect.ts";
 import { THEME_CSS } from "./theme.ts";
 import { PICO_CSS } from "./vendor/pico.ts";

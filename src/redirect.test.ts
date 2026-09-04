@@ -1,7 +1,7 @@
 // The five contracts from the migration spec, driven through the Worker's real fetch
 // handler (SELF.fetch()) rather than any internal helper, plus the query-string case.
-// src/test/global-setup.ts compiles src/test/fixtures/links/foo.json into
-// src/links.generated.ts before this project's tests run.
+// The link set under test is src/test/fixtures/links/, supplied through virtual:links
+// by the plugin configured for this project in vitest.config.ts.
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { redirectFor, resolveLink } from "./redirect.ts";

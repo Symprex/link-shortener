@@ -9,22 +9,25 @@
   },
   "scripts": {
     "dev": "nuxt dev",
+    "dev:worker": "vite dev --config vite.worker.config.ts",
+    "dev:admin": "wrangler dev -c wrangler.admin.jsonc",
     "build": "NODE_OPTIONS=--max-old-space-size=8192 nuxt build",
     "build:map": "node scripts/build-map.js",
     "build:colo": "node scripts/build-colo.js",
+    "build:worker": "vite build --config vite.worker.config.ts",
     "preview": "wrangler pages dev dist",
+    "preview:worker": "vite preview --config vite.worker.config.ts",
     "deploy": "wrangler pages deploy dist",
-    "postinstall": "npm run build:map && nuxt prepare",
+    "deploy:worker": "pnpm run build:worker && wrangler deploy -c .worker-build/link_shortener_redirect/wrangler.json",
+    "deploy:admin": "wrangler deploy -c wrangler.admin.jsonc",
+    "test": "vitest run",
     "lint": "node scripts/lint.mjs",
     "lint:fix": "eslint . --fix && oxlint --no-error-on-unmatched-pattern --fix src links && oxfmt src links",
     "typecheck": "nuxt typecheck && npm run typecheck:worker",
     "typecheck:worker": "wrangler types --config wrangler.worker.jsonc worker-configuration.d.ts && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
-    "generate-links": "node scripts/generate-links.ts",
-    "predeploy:worker": "npm run generate-links && node scripts/validate-links.ts",
-    "deploy:worker": "npm run predeploy:worker && wrangler deploy -c wrangler.worker.jsonc",
-    "deploy:admin": "wrangler deploy -c wrangler.admin.jsonc",
     "verify:deployment": "node scripts/verify-deployment.ts",
     "check:sql": "node scripts/check-analytics-sql.ts",
+    "postinstall": "npm run build:map && nuxt prepare",
     "wrangler": "wrangler",
     "lint-staged": "lint-staged"
   },
@@ -62,6 +65,7 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.19.0",
+    "@cloudflare/vite-plugin": "^1.54.4",
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@nuxt/eslint": "^1.9.0",
     "@nuxt/eslint-config": "^1.9.0",
@@ -82,9 +86,10 @@
     "simple-git-hooks": "^2.13.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
+    "vite": "7.3.5",
     "vitest": "^4.1.11",
     "vue-tsc": "^2.2.12",
-    "wrangler": "^4.128.0"
+    "wrangler": "^4.129.0"
   },
   "pnpm": {
     "overrides": {

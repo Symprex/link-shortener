@@ -1,9 +1,30 @@
 # Link file format
 
 Short links are defined in git, one file per link, at `links/<slug>.json`. This
-directory is the single source of truth: it is compiled into the Worker
-bundle at deploy time, so there is no runtime read of any database or KV
-namespace, and a deploy is always exactly what is in the merged commit.
+directory is the single source of truth: it is compiled into the Worker bundle at
+build time, so there is no runtime read of any database or KV namespace, and a deploy
+is always exactly what is in the merged commit.
+
+The compiling is done by a Vite plugin (`scripts/vite-plugin-links.ts`), which serves
+this directory to the Worker as the virtual module `virtual:links`. There is no
+generated file on disk. An invalid link file fails the build at the point the Worker
+imports it, naming every problem, so a broken link set cannot become a bundle.
+
+## Working on links locally
+
+```powershell
+pnpm run dev:worker
+```
+
+Add, edit or delete a file under `links/` while that is running and the change takes
+effect on the next request — no restart. An invalid file makes the Worker answer 500
+and prints the problem in the dev server output; fix the file and it recovers.
+
+To check a link set without starting a server:
+
+```powershell
+node scripts/validate-links.ts
+```
 
 ## Adding a link
 

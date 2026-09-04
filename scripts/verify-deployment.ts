@@ -278,7 +278,7 @@ export interface LinkExpectation {
 
 /**
  * Pulls the slug and url straight out of each link file, independent of the generated
- * bundle the redirect Worker actually serves (src/links.generated.ts) — so this proves
+ * bundle the redirect Worker actually serves (the virtual:links module) — so this proves
  * the deployed Worker against the same source of truth a reviewer would read by hand,
  * not against the Worker's own build output.
  */

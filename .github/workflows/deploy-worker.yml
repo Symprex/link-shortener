@@ -1,7 +1,8 @@
 name: Deploy Worker
 
-# Deploys both Workers on every push to master: compile links/**, validate
-# them again (belt and braces — validate-links.yml already gated the PR), then
+# Deploys both Workers on every push to master: validate links/** again (belt and
+# braces — validate-links.yml already gated the PR), build the redirect Worker with
+# Vite (which compiles links/** into the bundle as virtual:links), then
 # `wrangler deploy` the redirect Worker followed by the admin Worker (D16,
 # D21). A failed validation fails the job before either deploy runs, so a bad
 # link file can never reach either Worker. After the admin Worker deploy,
@@ -47,24 +48,26 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm generate-links
-
       - run: node scripts/validate-links.ts
 
       # Gates src/** and scripts/** against tsconfig.worker.json/tsconfig.scripts.json
       # before the deploy step below, so a type error in the Worker can never reach it.
       - run: pnpm run typecheck:worker
 
-      # deploy:worker bundles generate-links immediately before the wrangler
-      # deploy call, with no room to validate in between, so the deploy step
-      # here runs wrangler directly against the same config it uses.
-      - run: pnpm exec wrangler deploy -c wrangler.worker.jsonc
+      # Two steps rather than `pnpm deploy:worker`, which chains them: the build has to
+      # be able to fail the job on its own, and the deploy has to name the config the
+      # build produced. The build is also a second validation of links/** — the plugin
+      # refuses to emit virtual:links if any file is invalid — so a bad link file is
+      # caught here even if the explicit gate above were ever removed.
+      - run: pnpm run build:worker
+
+      - run: pnpm exec wrangler deploy -c .worker-build/link_shortener_redirect/wrangler.json
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      # The admin Worker (D21) imports no links map and reads no generated
-      # module, so it needs neither generate-links nor validate-links first —
-      # validation above already gates both deploys. If this step fails after
+      # The admin Worker (D21) imports no links map, so it needs no Vite build at all:
+      # it is deployed straight from wrangler.admin.jsonc, which also keeps its
+      # `access.dev` local-identity simulation working under `wrangler dev`. If this step fails after
       # the redirect deploy above has succeeded, the two Workers are left on
       # different commits until the next successful run: the redirect Worker
       # serves the new links, the admin Worker still serves the old build.

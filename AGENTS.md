@@ -10,7 +10,7 @@ Upstream is [miantiao-me/Sink](https://github.com/miantiao-me/Sink). A change th
 
 Two workflows, and neither covers the legacy Nuxt tree:
 
-- **Test** runs `pnpm generate-links`, `pnpm run typecheck:worker` and `pnpm exec vitest run` — the `src` scope and `scripts/`.
+- **Test** runs `pnpm run typecheck:worker`, `pnpm exec vitest run` and `pnpm run build:worker` — the `src` scope and `scripts/`, plus a real build of the redirect Worker.
 - **Validate links** runs the link schema gate, and only when `links/**` changes.
 
 `pnpm lint` is deliberately in neither: the legacy tree carries thousands of pre-existing ESLint errors and always fails. So for anything under `app/`, `server/` or `i18n/`, `pnpm typecheck` is the whole of what can be checked and it does not prove behaviour.
