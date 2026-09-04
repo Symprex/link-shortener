@@ -6,11 +6,16 @@ Our company-wide link shortener, served at **go.symprex.com**. Nuxt 4 on Cloudfl
 
 Upstream is [miantiao-me/Sink](https://github.com/miantiao-me/Sink). A change that could be made the way upstream would make it is cheaper to carry forward, so prefer the upstream shape unless there is a Symprex reason not to. `LICENSE`, `CODE_OF_CONDUCT.md` and `renovate.json` are upstream's.
 
-## Nothing runs on a pull request
+## What runs on a pull request
 
-There is no test suite here and no CI workflow. `pnpm typecheck` and `pnpm lint` are the whole of what can be checked, and neither of them proves behaviour.
+Two workflows, and neither covers the legacy Nuxt tree:
 
-So a change is handed over with what a person should click, not with a claim that it is verified. Do not report a lint pass as verification.
+- **Test** runs `pnpm run typecheck:worker`, `pnpm exec vitest run` and `pnpm run build:worker` — the `src` scope and `scripts/`, plus a real build of the redirect Worker.
+- **Validate links** runs the link schema gate, and only when `links/**` changes.
+
+`pnpm lint` is deliberately in neither: the legacy tree carries thousands of pre-existing ESLint errors and always fails. So for anything under `app/`, `server/` or `i18n/`, `pnpm typecheck` is the whole of what can be checked and it does not prove behaviour.
+
+A change outside the `src` scope is therefore handed over with what a person should click, not with a claim that it is verified. Do not report a lint pass as verification.
 
 ESLint is also the formatter — the antfu config carries the stylistic rules and `lint-staged` runs `eslint --fix`. There is no Prettier or oxfmt step to look for.
 

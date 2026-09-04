@@ -9,15 +9,25 @@
   },
   "scripts": {
     "dev": "nuxt dev",
+    "dev:worker": "vite dev --config vite.worker.config.ts",
+    "dev:admin": "wrangler dev -c wrangler.admin.jsonc",
     "build": "NODE_OPTIONS=--max-old-space-size=8192 nuxt build",
     "build:map": "node scripts/build-map.js",
     "build:colo": "node scripts/build-colo.js",
+    "build:worker": "vite build --config vite.worker.config.ts",
     "preview": "wrangler pages dev dist",
+    "preview:worker": "vite preview --config vite.worker.config.ts",
     "deploy": "wrangler pages deploy dist",
+    "deploy:worker": "pnpm run build:worker && wrangler deploy -c .worker-build/link_shortener_redirect/wrangler.json",
+    "deploy:admin": "wrangler deploy -c wrangler.admin.jsonc",
+    "test": "vitest run",
+    "lint": "node scripts/lint.mjs",
+    "lint:fix": "eslint . --fix && oxlint --no-error-on-unmatched-pattern --fix src links && oxfmt src links",
+    "typecheck": "nuxt typecheck && npm run typecheck:worker",
+    "typecheck:worker": "wrangler types --config wrangler.worker.jsonc worker-configuration.d.ts && tsc -p tsconfig.worker.json --noEmit && tsc -p tsconfig.scripts.json --noEmit",
+    "verify:deployment": "node scripts/verify-deployment.ts",
+    "check:sql": "node scripts/check-analytics-sql.ts",
     "postinstall": "npm run build:map && nuxt prepare",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "typecheck": "nuxt typecheck",
     "wrangler": "wrangler",
     "lint-staged": "lint-staged"
   },
@@ -55,24 +65,31 @@
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.19.0",
+    "@cloudflare/vite-plugin": "^1.54.4",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@nuxt/eslint": "^1.9.0",
     "@nuxt/eslint-config": "^1.9.0",
     "@nuxthub/core": "^0.8.27",
     "@nuxtjs/color-mode": "^3.5.2",
     "@nuxtjs/i18n": "^9.5.6",
     "@nuxtjs/tailwindcss": "7.0.0-beta.1",
+    "@types/node": "^26.4.1",
     "@vueuse/integrations": "^13.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "eslint": "^9.39.4",
     "lint-staged": "^16.2.3",
     "nuxt": "^4.4.6",
+    "oxfmt": "^0.66.0",
+    "oxlint": "^1.81.0",
     "shadcn-nuxt": "^2.2.0",
     "simple-git-hooks": "^2.13.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
+    "vite": "7.3.5",
+    "vitest": "^4.1.11",
     "vue-tsc": "^2.2.12",
-    "wrangler": "^4.77.0"
+    "wrangler": "^4.129.0"
   },
   "pnpm": {
     "overrides": {
@@ -108,8 +125,18 @@
     "pre-commit": "npm run lint-staged"
   },
   "lint-staged": {
-    "*.{js,jsx,ts,tsx,vue}": [
+    "./*.{js,jsx,ts,tsx,vue}": [
       "eslint --fix"
+    ],
+    "{app,server,i18n,schemas,scripts}/**/*.{js,jsx,ts,tsx,vue}": [
+      "eslint --fix"
+    ],
+    "src/**/*.{js,jsx,ts,tsx}": [
+      "oxfmt",
+      "oxlint --fix"
+    ],
+    "links/**/*.json": [
+      "oxfmt"
     ]
   }
 }

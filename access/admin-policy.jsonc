@@ -1,0 +1,66 @@
+{
+  // The Cloudflare Access allow policy for the admin Worker (link-shortener-admin,
+  // see wrangler.admin.jsonc). This is who is admitted to /admin — declared here,
+  // in git, so a change to it is a reviewable pull request, the same principle
+  // links/*.json rests on. scripts/Set-AdminWorkerAccess.ps1 reads this file
+  // (via -PolicyPath, defaulted to this path) and reasserts it against the live
+  // Access application on every deploy, so the application can never drift from
+  // what this file says.
+  //
+  // Five shapes are understood, and more than one may be set at once —
+  // Cloudflare Access treats multiple "include" rules as OR'd, so setting more
+  // than one would admit anyone matching any of them. In practice only one is
+  // expected to be set at a time:
+  //
+  //   "emailDomain": "symprex.com"
+  //     Admit any address at this domain. The broadest option — use deliberately.
+  //
+  //   "emails": ["adb@symprex.com", "other@symprex.com"]
+  //     Admit only the named individual addresses.
+  //
+  //   "groupName": "Staff"
+  //     Admit members of an existing Cloudflare Access group, resolved to its id
+  //     by name. The group itself is managed in the Zero Trust dashboard, not
+  //     here.
+  //
+  //   "groupId": "904af598-75e5-4ec0-9bc2-8a5ed6dfec0f"
+  //     Admit members of an existing Cloudflare Access group, referenced
+  //     directly by id rather than by name. The script still verifies the id
+  //     actually names a group (see below) before using it.
+  //
+  //   "reusablePolicyId": "904af598-75e5-4ec0-9bc2-8a5ed6dfec0f"
+  //     Admit whoever an existing *reusable Access policy* already admits.
+  //     A reusable policy is a separate Cloudflare resource from a group —
+  //     created once in the Zero Trust dashboard (or via the API) and then
+  //     attached to one or more applications by id — and it is referenced
+  //     differently: an application's `policies` array carries the policy's
+  //     id directly, rather than an inline `{ "group": { "id": ... } }` rule
+  //     inside the application's own policy. The script verifies the id
+  //     actually names a reusable policy before using it this way.
+  //
+  //   groupId vs reusablePolicyId — a plain Cloudflare id (a UUID) does not
+  //   say on its own which of these two resources it names, and getting it
+  //   wrong yields a broken or unintentionally permissive application. If
+  //   only an id is known, put it under either key — the script looks it up
+  //   against the account's Access groups and its reusable policies, then
+  //   either proceeds with the correct reference form or fails naming exactly
+  //   what the id turned out to be and which key to use.
+  //
+  // This file only understands whole-line "//" comments (a line whose first
+  // non-whitespace characters are "//") — it is not a general JSONC parser, so
+  // do not rely on inline or block comments elsewhere in this file.
+  //
+  // Active: the shared "All Employees" reusable Access policy, confirmed by the
+  // engineer to be a reusable policy rather than a group, so it is attached by
+  // id through the application's `policies` array. The script still verifies
+  // that at run time and fails loudly if the id stops naming a reusable policy.
+  //
+  // Note what this means for anyone reading this repository: the audience for
+  // /admin is defined centrally in Cloudflare Access, under that policy, and
+  // changes there without a commit here. That is the point — one place to
+  // update when somebody joins or leaves, applied everywhere the policy is
+  // attached — but it does mean this file no longer tells you who can see the
+  // statistics page, only that "All Employees" can. To read or change the
+  // membership, go to Zero Trust > Access > Policies.
+  "reusablePolicyId": "904af598-75e5-4ec0-9bc2-8a5ed6dfec0f"
+}

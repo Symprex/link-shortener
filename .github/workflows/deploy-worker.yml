@@ -1,0 +1,126 @@
+name: Deploy Worker
+
+# Deploys both Workers on every push to master: validate links/** again (belt and
+# braces — validate-links.yml already gated the PR), build the redirect Worker with
+# Vite (which compiles links/** into the bundle as virtual:links), then
+# `wrangler deploy` the redirect Worker followed by the admin Worker (D16,
+# D21). A failed validation fails the job before either deploy runs, so a bad
+# link file can never reach either Worker. After the admin Worker deploy,
+# reasserts its Cloudflare Access application from access/admin-policy.jsonc,
+# so Access admission is declared in git and reapplied on every deploy rather
+# than being a one-off manual step — then verify-deployment.ts checks the
+# real end state of both Workers, Access included.
+#
+# This targets each Worker's own *.workers.dev domain (staging) — no custom
+# route, no zone. T13 switches the redirect deploy to the production route
+# once one exists.
+#
+# workflow_dispatch is here so this can be run by hand against a branch — to
+# exercise it before it has ever run on master, and afterwards to redeploy or
+# to reassert the Access application without waiting for a merge. It deploys
+# whatever ref it is run from, and both Workers are staging-only, so a branch
+# run is safe; it is still a real deploy, not a dry run.
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-worker-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: node scripts/validate-links.ts
+
+      # Gates src/** and scripts/** against tsconfig.worker.json/tsconfig.scripts.json
+      # before the deploy step below, so a type error in the Worker can never reach it.
+      - run: pnpm run typecheck:worker
+
+      # Two steps rather than `pnpm deploy:worker`, which chains them: the build has to
+      # be able to fail the job on its own, and the deploy has to name the config the
+      # build produced. The build is also a second validation of links/** — the plugin
+      # refuses to emit virtual:links if any file is invalid — so a bad link file is
+      # caught here even if the explicit gate above were ever removed.
+      - run: pnpm run build:worker
+
+      - run: pnpm exec wrangler deploy -c .worker-build/link_shortener_redirect/wrangler.json
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      # The admin Worker (D21) imports no links map, so it needs no Vite build at all:
+      # it is deployed straight from wrangler.admin.jsonc, which also keeps its
+      # `access.dev` local-identity simulation working under `wrangler dev`. If this step fails after
+      # the redirect deploy above has succeeded, the two Workers are left on
+      # different commits until the next successful run: the redirect Worker
+      # serves the new links, the admin Worker still serves the old build.
+      # That is a real, visible half-deployed state, not one this workflow
+      # papers over — it surfaces as a failed job on master rather than a
+      # silent partial rollout.
+      - run: pnpm exec wrangler deploy -c wrangler.admin.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      # Reasserts the Cloudflare Access application that protects the admin Worker in
+      # its entirety (D21), from access/admin-policy.jsonc, on every deploy — so Access
+      # configuration is declarative and drift-correcting rather than a one-off manual
+      # step. Runs the *existing* engineer-facing script rather than a second
+      # implementation, so there is one implementation of a security-critical operation
+      # with two callers.
+      #
+      # Ordering: after the admin Worker deploy above, not before. The script resolves
+      # the Worker's id by name (GET /workers/scripts), which does not exist until the
+      # Worker has been deployed at least once — so "before" would fail on a first-ever
+      # deploy. There is no exposure window either way: the admin Worker fails closed
+      # (denies everyone) on its own from the moment it exists, whether or not Access is
+      # enforcing yet, so a few seconds between the two deploy steps and this one never
+      # leaves /admin reachable.
+      #
+      # A separate, broader-scoped token: CLOUDFLARE_API_TOKEN above only needs Workers
+      # deploy permissions, while this call needs Access: Apps and Policies Edit,
+      # Access: Organizations, Identity Providers, and Groups Read, and Workers Scripts
+      # Read (see the script's own .NOTES). Groups Read stays required even though
+      # access/admin-policy.jsonc now names its allow rule by id (reusablePolicyId)
+      # rather than by domain: a bare id does not say whether it names an Access group or a
+      # reusable policy, so the script reads both the account's groups and its
+      # reusable policies to verify which one it is before using it, rather than
+      # trusting the assumption. Widening CLOUDFLARE_API_TOKEN to cover both
+      # would violate least privilege and couple two rotations that should be
+      # independent, so CF_ACCESS_API_TOKEN is its own secret. If it is unset, the
+      # script itself refuses with a named guard and a non-zero exit — this step is not
+      # allowed to skip silently, because a deploy that quietly leaves the admin Worker
+      # unprotected is the worst outcome available here.
+      - run: ./scripts/Set-AdminWorkerAccess.ps1
+        shell: pwsh
+        env:
+          CF_ACCESS_API_TOKEN: ${{ secrets.CF_ACCESS_API_TOKEN }}
+
+      # A `wrangler deploy` call returns once Cloudflare has accepted the upload, which
+      # is not the same moment every edge PoP is serving it — a short margin here is
+      # cheaper than a flaky verification step. 15s is generous for a *.workers.dev
+      # deploy (no custom domain or DNS to propagate, just the Worker script itself).
+      - run: sleep 15
+
+      # The replacement proof obligation for the admin Worker's authentication (D21):
+      # @cloudflare/vitest-pool-workers cannot distinguish an authenticated request from
+      # an unauthenticated one, so this is the only check that a deploy has not exposed
+      # the statistics page or broken a short link. Runs against both *.workers.dev
+      # hosts this job just deployed, using verify-deployment.ts's own defaults.
+      - run: pnpm run verify:deployment
