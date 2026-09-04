@@ -2,7 +2,7 @@
   // The Cloudflare Access allow policy for the admin Worker (link-shortener-admin,
   // see wrangler.admin.jsonc). This is who is admitted to /admin — declared here,
   // in git, so a change to it is a reviewable pull request, the same principle
-  // links/*.json rests on. scripts/Setup-AccessApplication.ps1 reads this file
+  // links/*.json rests on. scripts/Set-AdminWorkerAccess.ps1 reads this file
   // (via -PolicyPath, defaulted to this path) and reasserts it against the live
   // Access application on every deploy, so the application can never drift from
   // what this file says.

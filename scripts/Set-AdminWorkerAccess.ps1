@@ -95,20 +95,20 @@
 
 .EXAMPLE
   $env:CF_ACCESS_API_TOKEN = '...'
-  ./scripts/Setup-AccessApplication.ps1 -AllowEmailDomain symprex.com
+  ./scripts/Set-AdminWorkerAccess.ps1 -AllowEmailDomain symprex.com
 
 .EXAMPLE
-  ./scripts/Setup-AccessApplication.ps1 -AllowEmail adb@symprex.com -WhatIf
+  ./scripts/Set-AdminWorkerAccess.ps1 -AllowEmail adb@symprex.com -WhatIf
 
 .EXAMPLE
   # An id whose resource type is not known in advance; the script verifies it.
   $env:CF_ACCESS_API_TOKEN = '...'
-  ./scripts/Setup-AccessApplication.ps1 -AllowGroupId 904af598-75e5-4ec0-9bc2-8a5ed6dfec0f
+  ./scripts/Set-AdminWorkerAccess.ps1 -AllowGroupId 904af598-75e5-4ec0-9bc2-8a5ed6dfec0f
 
 .EXAMPLE
   # CI's usage: no explicit allow rule, so it comes from access/admin-policy.jsonc.
   $env:CF_ACCESS_API_TOKEN = '...'
-  ./scripts/Setup-AccessApplication.ps1
+  ./scripts/Set-AdminWorkerAccess.ps1
 
 .NOTES
   Requires a Cloudflare API token in $env:CF_ACCESS_API_TOKEN with:

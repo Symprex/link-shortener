@@ -107,7 +107,7 @@ jobs:
       # script itself refuses with a named guard and a non-zero exit — this step is not
       # allowed to skip silently, because a deploy that quietly leaves the admin Worker
       # unprotected is the worst outcome available here.
-      - run: ./scripts/Setup-AccessApplication.ps1
+      - run: ./scripts/Set-AdminWorkerAccess.ps1
         shell: pwsh
         env:
           CF_ACCESS_API_TOKEN: ${{ secrets.CF_ACCESS_API_TOKEN }}
