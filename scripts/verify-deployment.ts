@@ -54,6 +54,21 @@ function isAccessLoginHost(hostname: string): boolean {
   return hostname === 'cloudflareaccess.com' || hostname.endsWith('.cloudflareaccess.com')
 }
 
+/**
+ * True when a `Location` header names the Access login host — parsed, so the domain has
+ * to be the host and not merely appear somewhere in the path, query or fragment. A
+ * Location that will not parse is relative, and an Access login redirect is always
+ * absolute and cross-origin, so it cannot be one.
+ */
+function isAccessLoginLocation(location: string): boolean {
+  try {
+    return isAccessLoginHost(new URL(location).hostname)
+  }
+  catch {
+    return false
+  }
+}
+
 const NOT_REFUSED_DETAIL = 'expected a 403, or a 3xx redirected to a cloudflareaccess.com Location'
 
 /**
@@ -216,6 +231,11 @@ export function checkBodyExcludesStatistics(
  * Access has been wrongly applied to the public Worker and every company short link is
  * broken. Anything else — including a plain `404` for an unknown path — is fine here;
  * this check only guards against Access leaking onto this Worker.
+ *
+ * The Location is matched on its host via `isAccessLoginLocation`, not by substring:
+ * a redirect to our own site carrying "cloudflareaccess.com" in a query parameter is
+ * not an Access login, and reporting it as a security failure would fail the deploy
+ * over nothing.
  */
 export function checkNeverExposedToAccess(
   name: string,
@@ -228,17 +248,13 @@ export function checkNeverExposedToAccess(
       'SECURITY: redirect Worker returned 403 — Access has been applied to the public Worker',
     )
   }
-  if (
-    status >= 300
-    && status < 400
-    && location !== null
-    && location.includes('cloudflareaccess.com')
-  ) {
+  if (status >= 300 && status < 400 && location !== null && isAccessLoginLocation(location)) {
     return fail(
       name,
       `SECURITY: redirected to an Access login (${location}) — Access has been applied to the public Worker`,
     )
   }
+
   return pass(name, `${status}${location ? ` -> ${location}` : ''}`)
 }
 

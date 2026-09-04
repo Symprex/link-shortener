@@ -20,7 +20,12 @@
     "dev": {
       "aud": "local-dev",
       "identity": {
-        "email": "adb@symprex.com"
+        // A placeholder, not a real mailbox: nothing authenticates against it, and it
+        // exists only so a local `wrangler dev` has an identity to resolve. Keeping an
+        // individual's address out of version control also avoids implying this Worker
+        // grants access to one named person — it does not; the audience is the Access
+        // application's own policy (see access/admin-policy.jsonc).
+        "email": "local-dev@symprex.example"
       }
     }
   },

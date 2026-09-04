@@ -227,6 +227,31 @@ describe('checkNeverExposedToAccess', () => {
     expect(result.detail).toMatch(/SECURITY/i)
   })
 
+  it('fails loudly on a redirect to the bare Access apex', () => {
+    const result = checkNeverExposedToAccess('name', 302, 'https://cloudflareaccess.com/login')
+    expect(result.status).toBe('FAIL')
+    expect(result.detail).toMatch(/SECURITY/i)
+  })
+
+  // The host is what makes a Location an Access login. A substring test also matches
+  // the string wherever it appears in a path or a query, so a legitimate redirect to
+  // our own site carrying it as a parameter would be reported as a security failure
+  // and would fail the deploy. `isAccessLoginHost` exists for exactly this reason —
+  // its own contract says "never by substring match" — and this check has to hold to
+  // the same standard as the two admin-side checks that already use it.
+  it.each([
+    'https://www.symprex.com/help?ref=cloudflareaccess.com',
+    'https://www.symprex.com/cloudflareaccess.com',
+    'https://www.symprex.com/x#cloudflareaccess.com',
+    'https://notcloudflareaccess.com/login',
+  ])('passes on a redirect that only mentions the Access domain off-host: %s', (location) => {
+    expect(checkNeverExposedToAccess('name', 302, location).status).toBe('PASS')
+  })
+
+  it('passes on a relative Location, which cannot be a cross-origin Access login', () => {
+    expect(checkNeverExposedToAccess('name', 302, '/careers').status).toBe('PASS')
+  })
+
   it('passes on a 404', () => {
     expect(checkNeverExposedToAccess('name', 404, null).status).toBe('PASS')
   })
