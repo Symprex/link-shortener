@@ -14,6 +14,7 @@ import {
   checkStatus,
   expectedRedirects,
   runAdminChecks,
+  runRedirectChecks,
   summarize,
 } from './verify-deployment.ts'
 
@@ -444,5 +445,61 @@ describe('runAdminChecks (fetch stubbed)', () => {
     const requestFailures = results.filter(result => result.name.endsWith(': request failed'))
     expect(requestFailures).toHaveLength(9)
     expect(requestFailures.every(result => result.status === 'ERROR')).toBe(true)
+  })
+})
+
+// After cutover the redirect and admin Workers share go.symprex.com: zone routes send
+// /admin and /admin/* to the admin Worker (behind Access) and everything else reaches the
+// redirect Worker's Custom Domain. The redirect-side proof has to change shape with it.
+describe('runRedirectChecks (fetch stubbed)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const links = [{ slug: 'support', url: 'https://www.symprex.com/support' }]
+
+  // A faithful production host: Access in front of /admin and /admin/*, the redirect
+  // Worker's contract everywhere else.
+  function productionHost(accessOnAdministrator = false) {
+    return vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+      const path = url.pathname.toLowerCase()
+      const gated = path === '/admin' || path.startsWith('/admin/') || (accessOnAdministrator && path.startsWith('/admin'))
+      if (gated)
+        return new Response(null, { status: 302, headers: { location: 'https://symprex.cloudflareaccess.com/cdn-cgi/access/login' } })
+      if (url.pathname === '/')
+        return new Response(null, { status: 302, headers: { location: 'https://www.symprex.com' } })
+      if (['/support', '/SUPPORT', '/support/'].includes(url.pathname))
+        return new Response(null, { status: 301, headers: { location: 'https://www.symprex.com/support' } })
+      return new Response('Not found', { status: 404 })
+    })
+  }
+
+  it('on a shared host, leaves /admin to the admin checks instead of reporting Access on it as a breach', async () => {
+    vi.stubGlobal('fetch', productionHost())
+
+    const results = await runRedirectChecks('https://go.example.test', links, 1000, { adminOnSameHost: true })
+
+    expect(results.filter(result => result.status !== 'PASS')).toEqual([])
+    expect(results.some(result => result.name.includes('/admin '))).toBe(false)
+  })
+
+  it('on a shared host, fails when a slug that only starts with "admin" is swallowed by the admin route', async () => {
+    vi.stubGlobal('fetch', productionHost(true))
+
+    const results = await runRedirectChecks('https://go.example.test', links, 1000, { adminOnSameHost: true })
+
+    const administrator = results.find(result => result.name === 'redirect GET /administrator (not the admin route): not Access-gated')
+    expect(administrator?.status).toBe('FAIL')
+    expect(administrator?.detail).toMatch(/SECURITY/)
+  })
+
+  it('on its own host, still requires /admin to 404 on the redirect Worker', async () => {
+    vi.stubGlobal('fetch', productionHost())
+
+    const results = await runRedirectChecks('https://redirect.example.test', links, 1000, { adminOnSameHost: false })
+
+    const gate = results.find(result => result.name === 'redirect GET /admin (gate must stay gone): not Access-gated')
+    expect(gate?.status).toBe('FAIL')
   })
 })

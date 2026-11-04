@@ -11,15 +11,18 @@ name: Deploy Worker
 # than being a one-off manual step — then verify-deployment.ts checks the
 # real end state of both Workers, Access included.
 #
-# This targets each Worker's own *.workers.dev domain (staging) — no custom
-# route, no zone. T13 switches the redirect deploy to the production route
-# once one exists.
+# This is the production deploy. The redirect Worker holds go.symprex.com as a
+# Custom Domain and the admin Worker holds zone routes for go.symprex.com/admin
+# and /admin/* (see both wrangler configs); each also keeps its *.workers.dev
+# hostname, which verify-deployment.ts checks first. The first run carrying
+# those routes moved go.symprex.com off the Sink fork's Worker — wrangler does
+# that without prompting when not attached to a terminal — so that run was the
+# cutover (#91).
 #
-# workflow_dispatch is here so this can be run by hand against a branch — to
-# exercise it before it has ever run on master, and afterwards to redeploy or
-# to reassert the Access application without waiting for a merge. It deploys
-# whatever ref it is run from, and both Workers are staging-only, so a branch
-# run is safe; it is still a real deploy, not a dry run.
+# workflow_dispatch is here to redeploy, or to reassert the Access application,
+# without waiting for a merge. It is restricted to master below: every deploy
+# now serves go.symprex.com, so a run from a branch would put that branch's
+# link set live.
 on:
   push:
     branches:
@@ -35,6 +38,8 @@ permissions:
 
 jobs:
   deploy:
+    # Production deploys come from master only — see workflow_dispatch above.
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -124,3 +129,11 @@ jobs:
       # the statistics page or broken a short link. Runs against both *.workers.dev
       # hosts this job just deployed, using verify-deployment.ts's own defaults.
       - run: pnpm run verify:deployment
+
+      # The same proof against production, where both Workers share go.symprex.com:
+      # every link and the root on the redirect Worker's Custom Domain, and /admin/* on
+      # the admin Worker's routes behind Access. Passing an admin base on the same host
+      # switches off the redirect-side "/admin must 404" checks, which only hold where the
+      # two Workers have separate hostnames, and keeps the /administrator probe that
+      # proves the admin routes have not widened over public slugs.
+      - run: pnpm run verify:deployment https://go.symprex.com https://go.symprex.com/admin

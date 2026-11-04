@@ -11,6 +11,27 @@
   // all-or-nothing across every route, custom domain, workers.dev hostname and preview of
   // a Worker, so it must never be applied here — it would put every short link behind a
   // login. "admin" stays reserved in src/redirect.ts so /admin 404s on this host.
+  //
+  // go.symprex.com is a Custom Domain: this Worker is the origin for the whole hostname,
+  // and Cloudflare manages its DNS record and certificate. Until cutover the domain
+  // belonged to the Sink fork's Worker (symprex-link-shortener). A non-interactive
+  // `wrangler deploy` (CI) moves a Custom Domain held by another Worker without asking,
+  // so the first deploy carrying this block IS the cutover. Rollback is re-pointing the
+  // domain at symprex-link-shortener in the dashboard (Workers -> that Worker -> Domains
+  // & Routes), which stays deployed until #92 removes it.
+  //
+  // /admin and /admin/* do not reach this Worker in production: wrangler.admin.jsonc
+  // declares zone routes for them, and a route takes precedence over a Custom Domain on
+  // the same hostname.
+  "routes": [
+    {
+      "pattern": "go.symprex.com",
+      "custom_domain": true
+    }
+  ],
+  // Explicit because wrangler turns workers.dev off by default once "routes" is set. It
+  // stays on as the staging host verify-deployment.ts checks before production.
+  "workers_dev": true,
   "analytics_engine_datasets": [
     {
       "binding": "ANALYTICS",

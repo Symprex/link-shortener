@@ -474,10 +474,22 @@ export async function runAdminChecks(
   return results
 }
 
-async function runRedirectChecks(
+export interface RedirectCheckOptions {
+  /**
+   * True when the admin Worker is reached on the redirect Worker's own hostname — after
+   * cutover, where zone routes send go.symprex.com/admin and /admin/* to the admin Worker
+   * ahead of the redirect Worker's Custom Domain. There, /admin being Access-gated is
+   * correct and is proved by runAdminChecks, so the redirect-side "gate must stay gone"
+   * checks are skipped rather than reported as a breach.
+   */
+  adminOnSameHost: boolean
+}
+
+export async function runRedirectChecks(
   redirectBaseUrl: string,
   links: LinkExpectation[],
   timeoutMs: number,
+  { adminOnSameHost }: RedirectCheckOptions,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = []
 
@@ -548,26 +560,42 @@ async function runRedirectChecks(
       timeoutMs,
     )),
   )
+  // An unknown slug that merely starts with "admin". The admin Worker's routes are
+  // /admin and /admin/*, not /admin*, precisely so a slug like this stays public; if a
+  // route is ever widened, this is the check that says so.
   results.push(
     ...(await checkRedirectRequest(
       redirectBaseUrl,
-      '/admin',
-      'redirect GET /admin (gate must stay gone)',
+      '/administrator',
+      'redirect GET /administrator (not the admin route)',
       404,
       null,
       timeoutMs,
     )),
   )
-  results.push(
-    ...(await checkRedirectRequest(
-      redirectBaseUrl,
-      '/admin/stats',
-      'redirect GET /admin/stats (gate must stay gone)',
-      404,
-      null,
-      timeoutMs,
-    )),
-  )
+
+  if (!adminOnSameHost) {
+    results.push(
+      ...(await checkRedirectRequest(
+        redirectBaseUrl,
+        '/admin',
+        'redirect GET /admin (gate must stay gone)',
+        404,
+        null,
+        timeoutMs,
+      )),
+    )
+    results.push(
+      ...(await checkRedirectRequest(
+        redirectBaseUrl,
+        '/admin/stats',
+        'redirect GET /admin/stats (gate must stay gone)',
+        404,
+        null,
+        timeoutMs,
+      )),
+    )
+  }
 
   return results
 }
@@ -591,7 +619,8 @@ async function main(): Promise<void> {
   const adminResults = await runAdminChecks(adminBaseUrl, slugs, REQUEST_TIMEOUT_MS)
   printResults(`Admin Worker (${adminBaseUrl})`, adminResults)
 
-  const redirectResults = await runRedirectChecks(redirectBaseUrl, links, REQUEST_TIMEOUT_MS)
+  const adminOnSameHost = new URL(redirectBaseUrl).host === new URL(adminBaseUrl).host
+  const redirectResults = await runRedirectChecks(redirectBaseUrl, links, REQUEST_TIMEOUT_MS, { adminOnSameHost })
   printResults(`Redirect Worker (${redirectBaseUrl})`, redirectResults)
 
   const allResults = [...adminResults, ...redirectResults]
