@@ -29,7 +29,9 @@
     "check:sql": "node scripts/check-analytics-sql.ts",
     "postinstall": "npm run build:map && nuxt prepare",
     "wrangler": "wrangler",
-    "lint-staged": "lint-staged"
+    "lint-staged": "lint-staged",
+    "check:parity": "node scripts/check-parity.ts",
+    "export:links": "node scripts/export-kv-links.ts"
   },
   "dependencies": {
     "@intlify/message-compiler": "^11.1.12",

@@ -1,0 +1,5 @@
+{
+  "url": "https://support.symprex.com/signature-365/server-side/troubleshooting/non-delivery-report-550-5-7-1-unable-to-relay-this-email",
+  "slug": "signature-365-ndr-tenant-closed",
+  "comment": "Link in NDR sent when a tenant has been closed / deleted and we are rejecting their emails"
+}
