@@ -61,7 +61,7 @@
     "virtua": "^0.41.5",
     "vue-sonner": "^2.0.8",
     "vue3-simple-icons": "^13.2.0",
-    "zod": "^3.25.76"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^4.19.0",
