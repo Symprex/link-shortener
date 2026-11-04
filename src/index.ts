@@ -25,6 +25,15 @@ export default {
   async fetch(request: Request, env: Env, ctx: AnalyticsExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
+    // The one admin request that reaches this Worker on go.symprex.com: route matching
+    // includes the query string, so /admin?days=7 matches neither of the admin Worker's
+    // routes ("/admin", "/admin/*"; wrangler.admin.jsonc) and falls through to this
+    // Custom Domain. Send it to /admin/, which "/admin/*" does match, rather than widening
+    // that route to "/admin*" and capturing public slugs. Not a link, so not recorded.
+    // Plain /admin without a query still 404s here — on go.symprex.com it never arrives.
+    if (url.pathname === "/admin" && url.search !== "")
+      return new Response(null, { status: 302, headers: { Location: `/admin/${url.search}` } });
+
     const match = redirectFor(url.pathname, links);
     if (match) {
       // Indexed by the link's own canonical slug, not the raw request slug, so /foo

@@ -450,30 +450,41 @@ describe('runAdminChecks (fetch stubbed)', () => {
 
 // After cutover the redirect and admin Workers share go.symprex.com: zone routes send
 // /admin and /admin/* to the admin Worker (behind Access) and everything else reaches the
-// redirect Worker's Custom Domain. The redirect-side proof has to change shape with it.
+// redirect Worker's Custom Domain. Route matching includes the query string, so
+// /admin?days=7 matches neither admin route and reaches the redirect Worker, which sends it
+// on to /admin/?days=7. Both halves of the proof have to change shape with it.
+const ACCESS_LOGIN = 'https://symprex.cloudflareaccess.com/cdn-cgi/access/login'
+
+function urlOf(input: string | URL | Request): URL {
+  return new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+}
+
+// A faithful production host, modelling Cloudflare's route matching on path plus query.
+function productionHost(accessOnAdministrator = false) {
+  // `_init` is declared so the mock's recorded calls carry it — the forged-token test
+  // reads the request headers from it.
+  return vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
+    const url = urlOf(input)
+    const exactAdminRoute = url.pathname === '/admin' && url.search === ''
+    const gated = exactAdminRoute || url.pathname.startsWith('/admin/') || (accessOnAdministrator && url.pathname.startsWith('/admin'))
+    if (gated)
+      return new Response(null, { status: 302, headers: { 'location': ACCESS_LOGIN, 'cache-control': 'private, no-store' } })
+    if (url.pathname === '/admin')
+      return new Response(null, { status: 302, headers: { location: `/admin/${url.search}` } })
+    if (url.pathname === '/')
+      return new Response(null, { status: 302, headers: { location: 'https://www.symprex.com' } })
+    if (['/support', '/SUPPORT', '/support/'].includes(url.pathname))
+      return new Response(null, { status: 301, headers: { location: 'https://www.symprex.com/support' } })
+    return new Response('Not found', { status: 404 })
+  })
+}
+
 describe('runRedirectChecks (fetch stubbed)', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
   })
 
   const links = [{ slug: 'support', url: 'https://www.symprex.com/support' }]
-
-  // A faithful production host: Access in front of /admin and /admin/*, the redirect
-  // Worker's contract everywhere else.
-  function productionHost(accessOnAdministrator = false) {
-    return vi.fn(async (input: string | URL | Request) => {
-      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
-      const path = url.pathname.toLowerCase()
-      const gated = path === '/admin' || path.startsWith('/admin/') || (accessOnAdministrator && path.startsWith('/admin'))
-      if (gated)
-        return new Response(null, { status: 302, headers: { location: 'https://symprex.cloudflareaccess.com/cdn-cgi/access/login' } })
-      if (url.pathname === '/')
-        return new Response(null, { status: 302, headers: { location: 'https://www.symprex.com' } })
-      if (['/support', '/SUPPORT', '/support/'].includes(url.pathname))
-        return new Response(null, { status: 301, headers: { location: 'https://www.symprex.com/support' } })
-      return new Response('Not found', { status: 404 })
-    })
-  }
 
   it('on a shared host, leaves /admin to the admin checks instead of reporting Access on it as a breach', async () => {
     vi.stubGlobal('fetch', productionHost())
@@ -482,6 +493,21 @@ describe('runRedirectChecks (fetch stubbed)', () => {
 
     expect(results.filter(result => result.status !== 'PASS')).toEqual([])
     expect(results.some(result => result.name.includes('/admin '))).toBe(false)
+  })
+
+  it('on a shared host, proves /admin?days=7 is sent on to the admin route rather than 404ing', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = urlOf(input)
+      // The regression: a redirect Worker with no /admin?… handling answers its 404.
+      if (url.pathname === '/admin' && url.search !== '')
+        return new Response('Not found', { status: 404 })
+      return productionHost()(input)
+    }))
+
+    const results = await runRedirectChecks('https://go.example.test', links, 1000, { adminOnSameHost: true })
+
+    const queryProbe = results.filter(result => result.name.startsWith('redirect GET /admin?days=7'))
+    expect(queryProbe.map(result => result.status)).toContain('FAIL')
   })
 
   it('on a shared host, fails when a slug that only starts with "admin" is swallowed by the admin route', async () => {
@@ -501,5 +527,37 @@ describe('runRedirectChecks (fetch stubbed)', () => {
 
     const gate = results.find(result => result.name === 'redirect GET /admin (gate must stay gone): not Access-gated')
     expect(gate?.status).toBe('FAIL')
+  })
+})
+
+describe('runAdminChecks on a shared host (fetch stubbed)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('probes the real admin paths from the origin, never /admin/admin, and never the public / or /favicon.ico', async () => {
+    const fetchStub = productionHost()
+    vi.stubGlobal('fetch', fetchStub)
+
+    const results = await runAdminChecks('https://go.example.test', ['support'], 1000, { adminOnSameHost: true })
+
+    const requested = fetchStub.mock.calls.map(([input]) => {
+      const url = urlOf(input)
+      return `${url.pathname}${url.search}`
+    })
+    expect([...new Set(requested)].sort()).toEqual(['/admin', '/admin/', '/admin/?days=7', '/admin/deep/nested/path'])
+    expect(results.filter(result => result.status !== 'PASS')).toEqual([])
+  })
+
+  it('sends the forged-token probes to the page itself, /admin/', async () => {
+    const fetchStub = productionHost()
+    vi.stubGlobal('fetch', fetchStub)
+
+    await runAdminChecks('https://go.example.test', ['support'], 1000, { adminOnSameHost: true })
+
+    const forged = fetchStub.mock.calls
+      .filter(([, init]) => new Headers(init?.headers).has('Cf-Access-Jwt-Assertion'))
+      .map(([input]) => urlOf(input).pathname)
+    expect(forged).toEqual(['/admin/', '/admin/', '/admin/'])
   })
 })

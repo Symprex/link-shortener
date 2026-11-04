@@ -62,6 +62,7 @@ export default {
     if (!ctx.access) return forbidden();
 
     const url = new URL(request.url);
+    if (url.pathname === "/admin") return toCanonicalPage(url);
     if (!isPagePath(url.pathname)) return notFound();
 
     const page = await renderAdminPage(env, url);
@@ -73,14 +74,29 @@ export default {
 };
 
 /**
- * The statistics page is served at `/` and at `/admin`, with or without a trailing slash.
- * Both are needed: on workers.dev this Worker is reached at its own hostname root, while
- * after cutover a route sends `go.symprex.com/admin*` here. Everything else is a 404 —
- * that route is a prefix match, so `/admin/anything` arrives here too and is not this
- * page. There is exactly one page and no other surface.
+ * The statistics page is served at `/` and at `/admin/`. Both are needed: on workers.dev
+ * this Worker is reached at its own hostname root, while on go.symprex.com the
+ * `/admin` and `/admin/*` routes send it here. Everything else is a 404 — `/admin/*` is
+ * a prefix match, so `/admin/anything` arrives here too and is not this page. There is
+ * exactly one page and no other surface.
  */
 function isPagePath(pathname: string): boolean {
-  return pathname === "/" || pathname === "/admin" || pathname === "/admin/";
+  return pathname === "/" || pathname === "/admin/";
+}
+
+/**
+ * `/admin` is sent on to `/admin/` rather than served, because the page's `?days=` links
+ * are relative: followed from `/admin` they resolve to `/admin?days=7`, and Cloudflare
+ * route matching includes the query string, so that URL matches neither the `/admin`
+ * route nor `/admin/*` and lands on the redirect Worker instead. From `/admin/` they
+ * resolve to `/admin/?days=7`, which `/admin/*` matches. The query is kept, and the
+ * Location is relative so it works on workers.dev too.
+ */
+function toCanonicalPage(url: URL): Response {
+  return new Response(null, {
+    status: 302,
+    headers: { Location: `/admin/${url.search}`, "Cache-Control": "no-store" },
+  });
 }
 
 function forbidden(): Response {

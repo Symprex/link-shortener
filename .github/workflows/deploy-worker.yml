@@ -131,9 +131,10 @@ jobs:
       - run: pnpm run verify:deployment
 
       # The same proof against production, where both Workers share go.symprex.com:
-      # every link and the root on the redirect Worker's Custom Domain, and /admin/* on
-      # the admin Worker's routes behind Access. Passing an admin base on the same host
-      # switches off the redirect-side "/admin must 404" checks, which only hold where the
-      # two Workers have separate hostnames, and keeps the /administrator probe that
-      # proves the admin routes have not widened over public slugs.
-      - run: pnpm run verify:deployment https://go.symprex.com https://go.symprex.com/admin
+      # every link and the root on the redirect Worker's Custom Domain, and /admin and
+      # /admin/* on the admin Worker's routes behind Access. Passing the same host for
+      # both switches verify-deployment.ts to its shared-host probes: the admin checks
+      # hit the real /admin, /admin/ and /admin/?days=7 (not / or /favicon.ico, which are
+      # public here), /admin?days=7 must be sent on to /admin/ by the redirect Worker, and
+      # /administrator proves the admin routes have not widened over public slugs.
+      - run: pnpm run verify:deployment https://go.symprex.com https://go.symprex.com
