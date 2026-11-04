@@ -420,22 +420,31 @@ async function checkRedirectRequest(
   return results
 }
 
+/**
+ * On its own hostname (workers.dev) every path reaches the admin Worker, so `/` and
+ * `/favicon.ico` are admin paths too. On go.symprex.com only the `/admin` and `/admin/*`
+ * routes do — `/` and `/favicon.ico` belong to the public redirect Worker — and route
+ * matching includes the query string, so the query-bearing probe has to be
+ * `/admin/?days=7` (`/admin?days=7` reaches the redirect Worker, and runRedirectChecks
+ * proves it is sent on). The forged tokens go to the page itself, `/admin/`.
+ */
+function adminPaths(adminOnSameHost: boolean): { paths: string[], forgedTokenPath: string } {
+  return adminOnSameHost
+    ? { paths: ['/admin', '/admin/', '/admin/deep/nested/path', '/admin/?days=7'], forgedTokenPath: '/admin/' }
+    : { paths: ['/', '/admin', '/admin/', '/admin/deep/nested/path', '/favicon.ico', '/admin?days=7'], forgedTokenPath: '/admin' }
+}
+
 export async function runAdminChecks(
   adminBaseUrl: string,
   slugs: string[],
   timeoutMs: number,
+  { adminOnSameHost }: RedirectCheckOptions = { adminOnSameHost: false },
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = []
   const outcomes: AdminOutcome[] = []
 
-  const paths: Array<[path: string, label: string]> = [
-    ['/', 'admin GET /'],
-    ['/admin', 'admin GET /admin'],
-    ['/admin/', 'admin GET /admin/'],
-    ['/admin/deep/nested/path', 'admin GET /admin/deep/nested/path'],
-    ['/favicon.ico', 'admin GET /favicon.ico'],
-    ['/admin?days=7', 'admin GET /admin?days=7'],
-  ]
+  const { paths: pathList, forgedTokenPath } = adminPaths(adminOnSameHost)
+  const paths: Array<[path: string, label: string]> = pathList.map(path => [path, `admin GET ${path}`])
   for (const [path, label] of paths) {
     const { results: pathResults, outcome } = await checkAdminRequest(
       adminBaseUrl,
@@ -451,14 +460,14 @@ export async function runAdminChecks(
   }
 
   const forgedTokens: Array<[token: string, label: string]> = [
-    [buildJunkAccessToken(), 'admin GET /admin with junk Cf-Access-Jwt-Assertion'],
-    [buildUnsignedAccessToken(), 'admin GET /admin with unsigned Cf-Access-Jwt-Assertion'],
-    [buildAlgNoneAccessToken(), 'admin GET /admin with alg:none Cf-Access-Jwt-Assertion'],
+    [buildJunkAccessToken(), `admin GET ${forgedTokenPath} with junk Cf-Access-Jwt-Assertion`],
+    [buildUnsignedAccessToken(), `admin GET ${forgedTokenPath} with unsigned Cf-Access-Jwt-Assertion`],
+    [buildAlgNoneAccessToken(), `admin GET ${forgedTokenPath} with alg:none Cf-Access-Jwt-Assertion`],
   ]
   for (const [token, label] of forgedTokens) {
     const { results: tokenResults, outcome } = await checkAdminRequest(
       adminBaseUrl,
-      '/admin',
+      forgedTokenPath,
       label,
       slugs,
       { 'Cf-Access-Jwt-Assertion': token },
@@ -474,10 +483,22 @@ export async function runAdminChecks(
   return results
 }
 
-async function runRedirectChecks(
+export interface RedirectCheckOptions {
+  /**
+   * True when the admin Worker is reached on the redirect Worker's own hostname — after
+   * cutover, where zone routes send go.symprex.com/admin and /admin/* to the admin Worker
+   * ahead of the redirect Worker's Custom Domain. There, /admin being Access-gated is
+   * correct and is proved by runAdminChecks, so the redirect-side "gate must stay gone"
+   * checks are skipped rather than reported as a breach.
+   */
+  adminOnSameHost: boolean
+}
+
+export async function runRedirectChecks(
   redirectBaseUrl: string,
   links: LinkExpectation[],
   timeoutMs: number,
+  { adminOnSameHost }: RedirectCheckOptions,
 ): Promise<CheckResult[]> {
   const results: CheckResult[] = []
 
@@ -548,26 +569,57 @@ async function runRedirectChecks(
       timeoutMs,
     )),
   )
+  // An unknown slug that merely starts with "admin". The admin Worker's routes are
+  // /admin and /admin/*, not /admin*, precisely so a slug like this stays public; if a
+  // route is ever widened, this is the check that says so.
   results.push(
     ...(await checkRedirectRequest(
       redirectBaseUrl,
-      '/admin',
-      'redirect GET /admin (gate must stay gone)',
+      '/administrator',
+      'redirect GET /administrator (not the admin route)',
       404,
       null,
       timeoutMs,
     )),
   )
-  results.push(
-    ...(await checkRedirectRequest(
-      redirectBaseUrl,
-      '/admin/stats',
-      'redirect GET /admin/stats (gate must stay gone)',
-      404,
-      null,
-      timeoutMs,
-    )),
-  )
+
+  if (adminOnSameHost) {
+    // Route matching includes the query string, so this matches neither admin route and
+    // reaches the redirect Worker, which must send it on to /admin/ (src/index.ts) — not
+    // 404 it, which is what a bookmarked or hand-typed /admin?days=7 would otherwise get.
+    results.push(
+      ...(await checkRedirectRequest(
+        redirectBaseUrl,
+        '/admin?days=7',
+        'redirect GET /admin?days=7 (sent on to the admin route)',
+        302,
+        '/admin/?days=7',
+        timeoutMs,
+      )),
+    )
+  }
+  else {
+    results.push(
+      ...(await checkRedirectRequest(
+        redirectBaseUrl,
+        '/admin',
+        'redirect GET /admin (gate must stay gone)',
+        404,
+        null,
+        timeoutMs,
+      )),
+    )
+    results.push(
+      ...(await checkRedirectRequest(
+        redirectBaseUrl,
+        '/admin/stats',
+        'redirect GET /admin/stats (gate must stay gone)',
+        404,
+        null,
+        timeoutMs,
+      )),
+    )
+  }
 
   return results
 }
@@ -581,17 +633,23 @@ function printResults(heading: string, results: CheckResult[]): void {
 async function main(): Promise<void> {
   const args = process.argv.slice(2)
   const redirectBaseUrl = (args[0] ?? DEFAULT_REDIRECT_BASE_URL).replace(/\/$/, '')
-  const adminBaseUrl = (args[1] ?? DEFAULT_ADMIN_BASE_URL).replace(/\/$/, '')
+  // On a shared host the admin probes are built from the origin (see adminPaths), so a
+  // base given with a path — https://go.symprex.com/admin — is reduced to its origin
+  // rather than producing /admin/admin.
+  const adminOnSameHost = new URL(redirectBaseUrl).host === new URL(args[1] ?? DEFAULT_ADMIN_BASE_URL).host
+  const adminBaseUrl = adminOnSameHost
+    ? new URL(redirectBaseUrl).origin
+    : (args[1] ?? DEFAULT_ADMIN_BASE_URL).replace(/\/$/, '')
 
   const linksDir = fileURLToPath(new URL('../links', import.meta.url))
   const files = readLinkFiles(linksDir)
   const links = expectedRedirects(files)
   const slugs = links.map(link => link.slug)
 
-  const adminResults = await runAdminChecks(adminBaseUrl, slugs, REQUEST_TIMEOUT_MS)
+  const adminResults = await runAdminChecks(adminBaseUrl, slugs, REQUEST_TIMEOUT_MS, { adminOnSameHost })
   printResults(`Admin Worker (${adminBaseUrl})`, adminResults)
 
-  const redirectResults = await runRedirectChecks(redirectBaseUrl, links, REQUEST_TIMEOUT_MS)
+  const redirectResults = await runRedirectChecks(redirectBaseUrl, links, REQUEST_TIMEOUT_MS, { adminOnSameHost })
   printResults(`Redirect Worker (${redirectBaseUrl})`, redirectResults)
 
   const allResults = [...adminResults, ...redirectResults]

@@ -52,9 +52,30 @@
   // hand-written JWT verifier that D21 deleted, and the audience is no longer checked in
   // code, so carrying them here would only suggest a check that does not happen.
   //
-  // No "routes" yet: this Worker runs on its own *.workers.dev hostname until the cutover
-  // adds a go.symprex.com/admin* route, which is why src/admin/index.ts serves the page at
-  // both "/" and "/admin".
+  // Zone routes on go.symprex.com, where the redirect Worker holds the Custom Domain
+  // (wrangler.worker.jsonc). A route takes precedence over a Custom Domain on the same
+  // hostname, so these two paths reach this Worker — and Worker-level Access, which covers
+  // every route of the Worker it is applied to — and nothing else does.
+  //
+  // Deliberately "/admin" and "/admin/*", not "/admin*": a route pattern is a prefix
+  // match, and "/admin*" would also capture any slug that merely starts with "admin"
+  // ("administrator", "admin-guide") and put a public short link behind a login.
+  // verify-deployment.ts probes /administrator to keep it that way.
+  //
+  "routes": [
+    {
+      "pattern": "go.symprex.com/admin",
+      "zone_name": "symprex.com"
+    },
+    {
+      "pattern": "go.symprex.com/admin/*",
+      "zone_name": "symprex.com"
+    }
+  ],
+  // Explicit because wrangler turns workers.dev off by default once "routes" is set. It
+  // stays on — still behind the same Worker-level Access — as the host verify-deployment.ts
+  // checks first, which is why src/admin/index.ts serves the page at both "/" and "/admin".
+  "workers_dev": true,
   "observability": {
     "logs": {
       "enabled": false

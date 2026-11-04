@@ -109,17 +109,28 @@ describe("the admin worker", () => {
     expect(await response.text()).toContain("<h1>Symprex Go</h1>");
   });
 
-  it.each(["/admin", "/admin/"])(
-    "serves the statistics page at %s, which is where the go.symprex.com route will send it",
-    async (path) => {
-      const response = await get(path, admittedContext());
-      expect(response.status).toBe(200);
-      expect(await response.text()).toContain("<h1>Symprex Go</h1>");
-    },
-  );
+  it("serves the statistics page at /admin/, its canonical address on go.symprex.com", async () => {
+    const response = await get("/admin/", admittedContext());
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("<h1>Symprex Go</h1>");
+  });
+
+  // Cloudflare route matching includes the query string, so go.symprex.com/admin?days=7
+  // matches neither the "/admin" route nor "/admin/*" and never reaches this Worker. The
+  // page's own ?days= links are relative, so they must be followed from /admin/, where
+  // they resolve to /admin/?days=… and stay on the "/admin/*" route.
+  it.each([
+    ["/admin", "/admin/"],
+    ["/admin?days=7", "/admin/?days=7"],
+  ])("sends %s on to %s, keeping the query", async (path, location) => {
+    const response = await get(path, admittedContext());
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe(location);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
 
   it("marks the page no-store, even though it no longer names the signed-in user", async () => {
-    const response = await get("/admin", admittedContext());
+    const response = await get("/admin/", admittedContext());
     // Status pinned too: the 403 also carries no-store, so without this the assertion
     // would pass on a refusal.
     expect(response.status).toBe(200);
@@ -127,7 +138,7 @@ describe("the admin worker", () => {
   });
 
   it("passes the query string on, so ?days=7 selects the 7-day window", async () => {
-    const response = await get("/admin?days=7", admittedContext());
+    const response = await get("/admin/?days=7", admittedContext());
     const body = await response.text();
     // The selected window is the only one rendered as <strong> rather than as a link
     // (src/admin/page.ts's renderWindowSelector), so this is the page agreeing that the
@@ -162,7 +173,7 @@ describe("the admin worker", () => {
     // queries on every page load; removing "Signed in as" removes the only reason to make
     // that call at all. A spy proves the call itself is gone, not just its rendering.
     const getIdentity = vi.fn(() => Promise.resolve(AN_IDENTITY));
-    const response = await get("/admin", { access: { aud: "test-aud", getIdentity } });
+    const response = await get("/admin/", { access: { aud: "test-aud", getIdentity } });
     expect(response.status).toBe(200);
     expect(getIdentity).not.toHaveBeenCalled();
   });

@@ -136,6 +136,19 @@ describe("the redirect worker", () => {
     expect(await response.text()).toContain("admin");
   });
 
+  // The one admin request that still reaches this Worker in production: Cloudflare route
+  // matching includes the query string, so /admin?days=7 matches neither of the admin
+  // Worker's routes ("/admin", "/admin/*") and falls through to the Custom Domain. It is
+  // sent on to /admin/, which the "/admin/*" route does match. Relative, so it stays on
+  // whichever host it arrived at.
+  it("sends /admin with a query string on to /admin/, where the admin route takes it", async () => {
+    const response = await SELF.fetch("https://go.symprex.com/admin?days=7", {
+      redirect: "manual",
+    });
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/admin/?days=7");
+  });
+
   it("does not serve a path below /admin either", async () => {
     const response = await SELF.fetch("https://go.symprex.com/admin/anything", {
       redirect: "manual",
