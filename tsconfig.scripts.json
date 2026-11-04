@@ -1,0 +1,25 @@
+{
+  // Type-checks the plain-Node side of the new tree: scripts/*.ts (validate-links.ts,
+  // vite-plugin-links.ts and their tests) plus the Vite and Vitest configs, which run in
+  // the same host process as those scripts rather than inside the Workers runtime — see
+  // tsconfig.worker.json for why Node-typed files live here rather than there.
+  //
+  // build-map.js and build-colo.js are deliberately not included: they are legacy Nuxt
+  // build helpers (see .symprex/config.json), covered by the app scope's ESLint rather
+  // than this gate.
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "node_modules/.tmp/tsconfig.scripts.tsbuildinfo",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  },
+  "include": ["scripts/*.ts", "vite.worker.config.ts", "vitest.config.ts"]
+}

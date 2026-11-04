@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "link-shortener-redirect",
+  "main": "src/index.ts",
+  "account_id": "93686db668e1fd06177661df08f7c0cd",
+  "compatibility_date": "2025-05-08",
+  // No vars and no secrets. This Worker is entirely public and holds no credentials: D21
+  // moved the admin surface to its own Worker (wrangler.admin.jsonc), which is where
+  // CF_API_TOKEN now lives, and deleted the hand-written JWT verifier that CF_ACCESS_AUD
+  // and CF_ACCESS_TEAM_DOMAIN existed for. Cloudflare's Worker-level Access is
+  // all-or-nothing across every route, custom domain, workers.dev hostname and preview of
+  // a Worker, so it must never be applied here — it would put every short link behind a
+  // login. "admin" stays reserved in src/redirect.ts so /admin 404s on this host.
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "link_shortener_redirects"
+    }
+  ],
+  "observability": {
+    "logs": {
+      "enabled": false
+    }
+  }
+}
